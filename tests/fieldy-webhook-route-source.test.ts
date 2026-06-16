@@ -32,3 +32,13 @@ test("webhook route records sync runs without raw transcript error text", () => 
   assert.doesNotMatch(source, /errorMessage:\s*validation\.payload/);
   assert.doesNotMatch(source, /validation\.payload\.transcription/);
 });
+
+test("webhook route catches setup failures without requiring a sync run", () => {
+  assert.match(source, /let syncRunId: string \| null = null/);
+  assert.match(
+    source,
+    /try \{\s*const \{ fieldyApiKey, fieldyWebhookSecret \} = getFieldyEnv\(\)/s,
+  );
+  assert.match(source, /if \(supabase && syncRunId\)/);
+  assert.match(source, /\{ accepted: false, error: "Fieldy webhook reconciliation failed" \}/);
+});

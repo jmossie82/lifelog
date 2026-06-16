@@ -138,34 +138,38 @@ async function finishSyncRun({
 }
 
 export async function POST(request: NextRequest) {
-  const { fieldyApiKey, fieldyWebhookSecret } = getFieldyEnv();
-  const ownerUserId = getOwnerUserId();
-  const secret = request.nextUrl.searchParams.get("secret");
-
-  if (secret !== fieldyWebhookSecret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  let body: unknown;
+  let supabase: SupabaseAdminClient | null = null;
+  let syncRunId: string | null = null;
 
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
-  }
+    const { fieldyApiKey, fieldyWebhookSecret } = getFieldyEnv();
+    const ownerUserId = getOwnerUserId();
+    const secret = request.nextUrl.searchParams.get("secret");
 
-  const validation = validateFieldyWebhookPayload(body);
-  if (!validation.ok) {
-    return NextResponse.json(
-      { error: validation.error },
-      { status: validation.status },
-    );
-  }
+    if (secret !== fieldyWebhookSecret) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  const supabase = createSupabaseAdminClient();
-  const syncRun = await createSyncRun(supabase, ownerUserId);
+    let body: unknown;
 
-  try {
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
+    }
+
+    const validation = validateFieldyWebhookPayload(body);
+    if (!validation.ok) {
+      return NextResponse.json(
+        { error: validation.error },
+        { status: validation.status },
+      );
+    }
+
+    supabase = createSupabaseAdminClient();
+    const syncRun = await createSyncRun(supabase, ownerUserId);
+    syncRunId = syncRun.id;
+
     const window = buildWindow(validation.payload.date);
     const fieldyClient = createFieldyClient({
       apiKey: fieldyApiKey,
@@ -181,7 +185,7 @@ export async function POST(request: NextRequest) {
       const errorMessage = "No canonical Fieldy conversation matched webhook date";
       await finishSyncRun({
         supabase,
-        syncRunId: syncRun.id,
+        syncRunId,
         status: "failed",
         importedCount: 0,
         errorMessage,
@@ -223,7 +227,7 @@ export async function POST(request: NextRequest) {
       const errorMessage = "No canonical Fieldy transcription matched webhook text";
       await finishSyncRun({
         supabase,
-        syncRunId: syncRun.id,
+        syncRunId,
         status: "failed",
         importedCount: 0,
         errorMessage,
@@ -238,7 +242,7 @@ export async function POST(request: NextRequest) {
 
     await finishSyncRun({
       supabase,
-      syncRunId: syncRun.id,
+      syncRunId,
       status: "succeeded",
       importedCount,
     });
@@ -249,16 +253,18 @@ export async function POST(request: NextRequest) {
       status: "succeeded",
     });
   } catch (error) {
-    try {
-      await finishSyncRun({
-        supabase,
-        syncRunId: syncRun.id,
-        status: "failed",
-        importedCount: 0,
-        errorMessage: toSafeErrorMessage(error),
-      });
-    } catch {
-      // Preserve the webhook response contract even if failure recording fails.
+    if (supabase && syncRunId) {
+      try {
+        await finishSyncRun({
+          supabase,
+          syncRunId,
+          status: "failed",
+          importedCount: 0,
+          errorMessage: toSafeErrorMessage(error),
+        });
+      } catch {
+        // Preserve the webhook response contract even if failure recording fails.
+      }
     }
 
     return NextResponse.json(
