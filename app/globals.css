@@ -353,6 +353,15 @@ button {
   line-height: 1.25;
 }
 
+.sync-metric .sync-status-failed {
+  color: #9b1c31;
+}
+
+.sync-metric .sync-status-running,
+.sync-metric .sync-status-idle {
+  color: var(--muted);
+}
+
 .timeline-card,
 .rail-panel {
   border: 1px solid var(--border);

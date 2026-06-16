@@ -6,6 +6,8 @@ type ConversationTableRow = Database["public"]["Tables"]["conversations"]["Row"]
 type TaskTableRow = Database["public"]["Tables"]["tasks"]["Row"];
 type SyncRunTableRow = Database["public"]["Tables"]["sync_runs"]["Row"];
 
+export const OPEN_TASK_STATUSES = ["new", "approved"] as const;
+
 export type DashboardConversationRow = Pick<
   ConversationTableRow,
   "id" | "fieldy_id" | "title" | "summary" | "started_at" | "ended_at" | "keywords"
@@ -52,11 +54,15 @@ export function mapDashboardData({
   conversations,
   tasks,
   syncRuns,
+  openTaskCount,
 }: {
   conversations: DashboardConversationRow[];
   tasks: DashboardTaskRow[];
   syncRuns: DashboardSyncRunRow[];
+  openTaskCount?: number;
 }): DashboardData {
+  const openStatuses = new Set<string>(OPEN_TASK_STATUSES);
+
   return {
     conversations: conversations.map((conversation) => ({
       id: conversation.id,
@@ -74,7 +80,8 @@ export function mapDashboardData({
       dueAt: task.due_at,
       conversationId: task.conversation_id,
     })),
-    openTaskCount: tasks.filter((task) => task.status !== "completed").length,
+    openTaskCount:
+      openTaskCount ?? tasks.filter((task) => openStatuses.has(task.status)).length,
     lastSync: syncRuns[0] ?? null,
   };
 }
@@ -82,25 +89,30 @@ export function mapDashboardData({
 export async function getDashboardData(
   supabase: SupabaseClient<Database>,
 ): Promise<DashboardData> {
-  const [conversationsResult, tasksResult, syncRunsResult] = await Promise.all([
-    supabase
-      .from("conversations")
-      .select("id, fieldy_id, title, summary, started_at, ended_at, keywords")
-      .order("started_at", { ascending: false, nullsFirst: false })
-      .limit(50),
-    supabase
-      .from("tasks")
-      .select("id, title, status, due_at, conversation_id")
-      .order("created_at", { ascending: false })
-      .limit(20),
-    supabase
-      .from("sync_runs")
-      .select(
-        "id, source, status, started_at, finished_at, imported_count, error_message",
-      )
-      .order("started_at", { ascending: false })
-      .limit(1),
-  ]);
+  const [conversationsResult, tasksResult, openTaskCountResult, syncRunsResult] =
+    await Promise.all([
+      supabase
+        .from("conversations")
+        .select("id, fieldy_id, title, summary, started_at, ended_at, keywords")
+        .order("started_at", { ascending: false, nullsFirst: false })
+        .limit(50),
+      supabase
+        .from("tasks")
+        .select("id, title, status, due_at, conversation_id")
+        .order("created_at", { ascending: false })
+        .limit(20),
+      supabase
+        .from("tasks")
+        .select("id", { count: "exact", head: true })
+        .in("status", [...OPEN_TASK_STATUSES]),
+      supabase
+        .from("sync_runs")
+        .select(
+          "id, source, status, started_at, finished_at, imported_count, error_message",
+        )
+        .order("started_at", { ascending: false })
+        .limit(1),
+    ]);
 
   if (conversationsResult.error) {
     throw conversationsResult.error;
@@ -108,6 +120,10 @@ export async function getDashboardData(
 
   if (tasksResult.error) {
     throw tasksResult.error;
+  }
+
+  if (openTaskCountResult.error) {
+    throw openTaskCountResult.error;
   }
 
   if (syncRunsResult.error) {
@@ -118,5 +134,6 @@ export async function getDashboardData(
     conversations: conversationsResult.data ?? [],
     tasks: tasksResult.data ?? [],
     syncRuns: syncRunsResult.data ?? [],
+    openTaskCount: openTaskCountResult.count ?? 0,
   });
 }

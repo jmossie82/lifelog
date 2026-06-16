@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertCircle,
   BarChart3,
   BatteryFull,
   CalendarDays,
@@ -177,6 +178,8 @@ export function LifelogDashboard({ data }: { data: DashboardData }) {
     return filterConversationsByTab(conversations, activeTab);
   }, [activeTab, conversations]);
 
+  const hasImportedConversations = data.conversations.length > 0;
+  const hasFilteredConversations = visibleConversations.length > 0;
   const openTaskCount = data.openTaskCount;
   const todayConversationCount = conversations.filter(
     (conversation) => conversation.day === "today",
@@ -195,6 +198,14 @@ export function LifelogDashboard({ data }: { data: DashboardData }) {
   const currentDate = new Date();
   const yesterdayDate = new Date(currentDate);
   yesterdayDate.setDate(currentDate.getDate() - 1);
+  const syncStatus = data.lastSync?.status ?? "Not synced";
+  const SyncStatusIcon =
+    data.lastSync?.status === "succeeded"
+      ? Check
+      : data.lastSync?.status === "failed"
+        ? AlertCircle
+        : RefreshCcw;
+  const syncStatusClassName = `sync-status sync-status-${data.lastSync?.status ?? "idle"}`;
 
   function handleRecallSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -295,7 +306,7 @@ export function LifelogDashboard({ data }: { data: DashboardData }) {
                 ],
                 ["Recent", String(data.conversations.length), "Imported conversations"],
                 ["Keywords", String(keywordCount), "Unique imported"],
-                ["Action items", String(openTaskCount), `${data.tasks.length} imported`],
+                ["Action items", String(openTaskCount), `${data.tasks.length} recent shown`],
               ].map(([label, value, delta]) => (
                 <article className="metric" key={label}>
                   <p>{label}</p>
@@ -305,9 +316,9 @@ export function LifelogDashboard({ data }: { data: DashboardData }) {
               ))}
               <article className="metric sync-metric">
                 <p>Sync status</p>
-                <strong>
-                  <Check aria-hidden="true" size={19} />
-                  {data.lastSync?.status ?? "Not synced"}
+                <strong className={syncStatusClassName}>
+                  <SyncStatusIcon aria-hidden="true" size={19} />
+                  {syncStatus}
                 </strong>
                 <span>
                   {data.lastSync?.error_message ??
@@ -341,10 +352,17 @@ export function LifelogDashboard({ data }: { data: DashboardData }) {
                 </button>
               </div>
 
-              {visibleConversations.length === 0 ? (
+              {data.conversations.length === 0 ? (
                 <section className="empty-state">
                   <h2>No Fieldy conversations imported yet</h2>
                   <p>Run a manual sync to backfill your recent Fieldy history.</p>
+                </section>
+              ) : null}
+
+              {hasImportedConversations && !hasFilteredConversations ? (
+                <section className="empty-state">
+                  <h2>No items in this view yet</h2>
+                  <p>Try another timeline filter to see imported Fieldy conversations.</p>
                 </section>
               ) : null}
 
