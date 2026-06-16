@@ -20,6 +20,10 @@ export function getSupabaseAdminEnv() {
   };
 }
 
+export function getFieldyWebhookSecret() {
+  return readRequiredEnv("FIELDY_WEBHOOK_SECRET");
+}
+
 export function getFieldyEnv() {
   const configuredDays = process.env.FIELDY_BACKFILL_DAYS ?? "30";
   const fieldyBackfillDays = Number(configuredDays);
@@ -34,7 +38,7 @@ export function getFieldyEnv() {
 
   return {
     fieldyApiKey: readRequiredEnv("FIELDY_API_KEY"),
-    fieldyWebhookSecret: readRequiredEnv("FIELDY_WEBHOOK_SECRET"),
+    fieldyWebhookSecret: getFieldyWebhookSecret(),
     fieldyBackfillDays,
   };
 }

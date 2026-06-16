@@ -1,9 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { getFieldyEnv, getOwnerUserId } from "@/lib/env";
+import { getFieldyEnv, getFieldyWebhookSecret, getOwnerUserId } from "@/lib/env";
 import { createFieldyClient, FieldyApiError } from "@/lib/fieldy/client";
 import {
+  assessMatchedConversationSafety,
   buildWindow,
+  getBoundedConversationRange,
   selectMatchingConversationSets,
   type FieldyConversationSetCandidate,
 } from "@/lib/fieldy/webhook-reconciliation";
@@ -101,13 +103,15 @@ export async function POST(request: NextRequest) {
   let importedCount = 0;
 
   try {
-    const { fieldyApiKey, fieldyWebhookSecret } = getFieldyEnv();
-    const ownerUserId = getOwnerUserId();
+    const fieldyWebhookSecret = getFieldyWebhookSecret();
     const secret = request.nextUrl.searchParams.get("secret");
 
     if (secret !== fieldyWebhookSecret) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const { fieldyApiKey } = getFieldyEnv();
+    const ownerUserId = getOwnerUserId();
 
     let body: unknown;
 
@@ -160,10 +164,10 @@ export async function POST(request: NextRequest) {
     const candidateSets: FieldyConversationSetCandidate[] = [];
 
     for (const conversation of conversations) {
-      const transcriptions = await fieldyClient.fetchTranscriptions({
-        startTime: conversation.startTime ?? window.startTime,
-        endTime: conversation.endTime ?? window.endTime,
-      });
+      const transcriptionRange = getBoundedConversationRange(conversation);
+      const transcriptions = transcriptionRange
+        ? await fieldyClient.fetchTranscriptions(transcriptionRange)
+        : [];
 
       candidateSets.push({
         transcriptions,
@@ -211,9 +215,30 @@ export async function POST(request: NextRequest) {
     }
 
     const matchedSet = matchingSets[0];
+    const safety = assessMatchedConversationSafety(matchedSet, candidateSets);
+
+    if (!safety.ok) {
+      await finishSyncRun({
+        supabase,
+        syncRunId,
+        status: "failed",
+        importedCount: 0,
+        errorMessage: safety.errorMessage,
+      });
+
+      return NextResponse.json({
+        accepted: true,
+        importedCount: 0,
+        status: "failed",
+      });
+    }
+
+    const matchedTranscriptions = await fieldyClient.fetchTranscriptions(
+      safety.transcriptionRange,
+    );
     const result = await ingestion.ingestConversationSet({
       conversation: matchedSet.conversation,
-      transcriptions: matchedSet.transcriptions,
+      transcriptions: matchedTranscriptions,
       tasks: [],
     });
     importedCount =

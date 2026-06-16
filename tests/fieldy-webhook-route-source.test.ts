@@ -10,9 +10,17 @@ const reconciliationSource = readFileSync(
 
 test("webhook route uses FIELDY_WEBHOOK_SECRET and documented validation", () => {
   assert.match(source, /fieldyWebhookSecret/);
+  assert.match(source, /getFieldyWebhookSecret/);
   assert.match(source, /validateFieldyWebhookPayload/);
   assert.doesNotMatch(source, /FIELDY_WEBHOOK_TOKEN/);
   assert.doesNotMatch(source, /conversation\.processed/);
+});
+
+test("webhook route checks the secret before unrelated Fieldy env", () => {
+  assert.match(
+    source,
+    /const fieldyWebhookSecret = getFieldyWebhookSecret\(\)[\s\S]*if \(secret !== fieldyWebhookSecret\)[\s\S]*const \{ fieldyApiKey \} = getFieldyEnv\(\)/,
+  );
 });
 
 test("webhook route reconciles with Fieldy REST before ingestion", () => {
@@ -43,7 +51,7 @@ test("webhook route catches setup failures without requiring a sync run", () => 
   assert.match(source, /let syncRunId: string \| null = null/);
   assert.match(
     source,
-    /try \{\s*const \{ fieldyApiKey, fieldyWebhookSecret \} = getFieldyEnv\(\)/s,
+    /try \{\s*const fieldyWebhookSecret = getFieldyWebhookSecret\(\)/s,
   );
   assert.match(source, /if \(supabase && syncRunId\)/);
   assert.match(source, /\{ accepted: false, error: "Fieldy webhook reconciliation failed" \}/);
@@ -53,4 +61,20 @@ test("webhook route fails safely when multiple candidates match", () => {
   assert.match(source, /matchingSets\.length > 1/);
   assert.match(source, /Multiple canonical Fieldy conversations matched webhook text/);
   assert.doesNotMatch(source, /validation\.payload\.transcription/);
+});
+
+test("webhook route checks interval safety before ingestion", () => {
+  assert.match(source, /assessMatchedConversationSafety/);
+  assert.match(source, /getBoundedConversationRange/);
+  assert.match(
+    reconciliationSource,
+    /Matched Fieldy conversation did not include bounded times/,
+  );
+  assert.match(
+    reconciliationSource,
+    /Multiple Fieldy conversation intervals overlapped webhook match/,
+  );
+  assert.match(source, /safety\.transcriptionRange/);
+  assert.doesNotMatch(source, /conversation\.startTime \?\? window\.startTime/);
+  assert.doesNotMatch(source, /conversation\.endTime \?\? window\.endTime/);
 });

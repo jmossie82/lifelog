@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  assessMatchedConversationSafety,
   matchesWebhookPayload,
   selectMatchingConversationSets,
 } from "../lib/fieldy/webhook-reconciliation.ts";
@@ -38,8 +39,14 @@ function transcriptions(texts: string[]): FieldyTranscription[] {
   }));
 }
 
-function conversation(id: string): FieldyConversation {
-  return { id, startTime: "2026-06-16T12:00:00.000Z" };
+function conversation(
+  id: string,
+  times: Pick<FieldyConversation, "startTime" | "endTime"> = {
+    startTime: "2026-06-16T12:00:00.000Z",
+    endTime: "2026-06-16T12:10:00.000Z",
+  },
+): FieldyConversation {
+  return { id, ...times };
 }
 
 test("matches full webhook transcript contained in canonical text with nearby segments", () => {
@@ -91,6 +98,30 @@ test("does not match a short common top-level transcript by itself", () => {
   );
 });
 
+test("matches exact short full transcript equality", () => {
+  const webhook = payload({
+    transcription: "Hi, my name is Adam.",
+    segments: ["Hi, my name is Adam."],
+  });
+
+  assert.equal(
+    matchesWebhookPayload(webhook, transcriptions(["Hi, my name is Adam."])),
+    true,
+  );
+});
+
+test("matches exact short segment equality", () => {
+  const webhook = payload({
+    transcription: "",
+    segments: ["Hi, my name is Adam."],
+  });
+
+  assert.equal(
+    matchesWebhookPayload(webhook, transcriptions(["Hi, my name is Adam."])),
+    true,
+  );
+});
+
 test("matches empty top-level transcript with enough eligible segment evidence", () => {
   const webhook = payload({
     transcription: "",
@@ -110,6 +141,71 @@ test("matches empty top-level transcript with enough eligible segment evidence",
     ),
     true,
   );
+});
+
+test("rejects matched conversations without bounded times", () => {
+  const matched = {
+    conversation: conversation("conversation-a", {
+      startTime: "2026-06-16T12:00:00.000Z",
+      endTime: null,
+    }),
+    transcriptions: transcriptions(["Hi, my name is Adam."]),
+  };
+
+  assert.deepEqual(assessMatchedConversationSafety(matched, [matched]), {
+    ok: false,
+    errorMessage: "Matched Fieldy conversation did not include bounded times",
+  });
+});
+
+test("rejects matched conversations with overlapping candidate intervals", () => {
+  const matched = {
+    conversation: conversation("conversation-a", {
+      startTime: "2026-06-16T12:00:00.000Z",
+      endTime: "2026-06-16T12:10:00.000Z",
+    }),
+    transcriptions: transcriptions(["Hi, my name is Adam."]),
+  };
+  const overlapping = {
+    conversation: conversation("conversation-b", {
+      startTime: "2026-06-16T12:05:00.000Z",
+      endTime: "2026-06-16T12:15:00.000Z",
+    }),
+    transcriptions: transcriptions(["Unrelated nearby conversation."]),
+  };
+
+  assert.deepEqual(
+    assessMatchedConversationSafety(matched, [matched, overlapping]),
+    {
+      ok: false,
+      errorMessage: "Multiple Fieldy conversation intervals overlapped webhook match",
+    },
+  );
+});
+
+test("returns matched bounded transcription range when interval is unambiguous", () => {
+  const matched = {
+    conversation: conversation("conversation-a", {
+      startTime: "2026-06-16T12:00:00.000Z",
+      endTime: "2026-06-16T12:10:00.000Z",
+    }),
+    transcriptions: transcriptions(["Hi, my name is Adam."]),
+  };
+  const separate = {
+    conversation: conversation("conversation-b", {
+      startTime: "2026-06-16T12:11:00.000Z",
+      endTime: "2026-06-16T12:20:00.000Z",
+    }),
+    transcriptions: transcriptions(["Unrelated nearby conversation."]),
+  };
+
+  assert.deepEqual(assessMatchedConversationSafety(matched, [matched, separate]), {
+    ok: true,
+    transcriptionRange: {
+      startTime: "2026-06-16T12:00:00.000Z",
+      endTime: "2026-06-16T12:10:00.000Z",
+    },
+  });
 });
 
 test("selects multiple matching candidate conversations for ambiguity handling", () => {

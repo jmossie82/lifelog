@@ -15,6 +15,23 @@ export type FieldyConversationSetCandidate = {
   transcriptions: FieldyTranscription[];
 };
 
+type TranscriptionRange = {
+  startTime: string;
+  endTime: string;
+};
+
+type MatchedConversationSafety =
+  | {
+      ok: true;
+      transcriptionRange: TranscriptionRange;
+    }
+  | {
+      ok: false;
+      errorMessage:
+        | "Matched Fieldy conversation did not include bounded times"
+        | "Multiple Fieldy conversation intervals overlapped webhook match";
+    };
+
 export function buildWindow(date: string) {
   const webhookDate = new Date(date);
   const webhookTime = webhookDate.getTime();
@@ -44,6 +61,10 @@ export function matchesWebhookPayload(
   );
   const webhookText = normalizeText(payload.transcription);
 
+  if (webhookText && canonicalText === webhookText) {
+    return true;
+  }
+
   if (
     webhookText.length >= FULL_TRANSCRIPT_MIN_LENGTH &&
     canonicalText.includes(webhookText)
@@ -67,6 +88,10 @@ export function matchesWebhookPayload(
     canonicalText.includes(segment),
   );
 
+  if (eligibleSegments.some((segment) => canonicalText === segment)) {
+    return true;
+  }
+
   if (eligibleSegments.length === 1) {
     return (
       eligibleSegments[0].length >= SINGLE_SEGMENT_MIN_LENGTH &&
@@ -75,6 +100,65 @@ export function matchesWebhookPayload(
   }
 
   return matchingSegments.length >= MULTI_SEGMENT_REQUIRED_MATCHES;
+}
+
+export function getBoundedConversationRange(
+  conversation: FieldyConversation,
+): TranscriptionRange | null {
+  if (!conversation.startTime || !conversation.endTime) {
+    return null;
+  }
+
+  const startTime = new Date(conversation.startTime);
+  const endTime = new Date(conversation.endTime);
+
+  if (
+    Number.isNaN(startTime.getTime()) ||
+    Number.isNaN(endTime.getTime()) ||
+    startTime.getTime() >= endTime.getTime()
+  ) {
+    return null;
+  }
+
+  return {
+    startTime: startTime.toISOString(),
+    endTime: endTime.toISOString(),
+  };
+}
+
+function rangesOverlap(left: TranscriptionRange, right: TranscriptionRange) {
+  return left.startTime < right.endTime && right.startTime < left.endTime;
+}
+
+export function assessMatchedConversationSafety(
+  matched: FieldyConversationSetCandidate,
+  candidates: FieldyConversationSetCandidate[],
+): MatchedConversationSafety {
+  const matchedRange = getBoundedConversationRange(matched.conversation);
+
+  if (!matchedRange) {
+    return {
+      ok: false,
+      errorMessage: "Matched Fieldy conversation did not include bounded times",
+    };
+  }
+
+  const overlappingCandidateCount = candidates.filter((candidate) => {
+    const candidateRange = getBoundedConversationRange(candidate.conversation);
+    return candidateRange && rangesOverlap(matchedRange, candidateRange);
+  }).length;
+
+  if (overlappingCandidateCount > 1) {
+    return {
+      ok: false,
+      errorMessage: "Multiple Fieldy conversation intervals overlapped webhook match",
+    };
+  }
+
+  return {
+    ok: true,
+    transcriptionRange: matchedRange,
+  };
 }
 
 export function selectMatchingConversationSets(

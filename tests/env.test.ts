@@ -4,6 +4,7 @@ import { afterEach, test } from "node:test";
 import {
   getClientEnv,
   getFieldyEnv,
+  getFieldyWebhookSecret,
   getOwnerUserId,
   getSupabaseAdminEnv,
 } from "../lib/env.ts";
@@ -62,6 +63,14 @@ test("getFieldyEnv accepts a positive FIELDY_BACKFILL_DAYS value", () => {
   process.env.FIELDY_BACKFILL_DAYS = "14";
 
   assert.equal(getFieldyEnv().fieldyBackfillDays, 14);
+});
+
+test("getFieldyWebhookSecret reads only the webhook secret", () => {
+  delete process.env.FIELDY_API_KEY;
+  process.env.FIELDY_BACKFILL_DAYS = "not-a-number";
+  process.env.FIELDY_WEBHOOK_SECRET = "secret";
+
+  assert.equal(getFieldyWebhookSecret(), "secret");
 });
 
 test("getFieldyEnv rejects invalid FIELDY_BACKFILL_DAYS", () => {
