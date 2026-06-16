@@ -20,3 +20,28 @@ test("backfill action uses Fieldy pagination and ingestion", () => {
 test("backfill action revalidates the dashboard", () => {
   assert.match(source, /revalidatePath\("\/"\)/);
 });
+
+test("backfill action fails closed instead of falling back to the whole range for transcripts", () => {
+  assert.doesNotMatch(source, /conversation\.startTime\s*\?\?/);
+  assert.doesNotMatch(source, /conversation\.endTime\s*\?\?/);
+  assert.match(source, /Fieldy backfill encountered an unbounded conversation/);
+});
+
+test("backfill action records partial imported count on failure", () => {
+  const importedCountDeclaration = source.indexOf("let importedCount = 0");
+  const tryBlock = source.indexOf("try {");
+  const failureUpdate = source.indexOf('status: "failed"');
+
+  assert.notEqual(importedCountDeclaration, -1);
+  assert.notEqual(tryBlock, -1);
+  assert.notEqual(failureUpdate, -1);
+  assert.ok(importedCountDeclaration < tryBlock);
+  assert.match(
+    source.slice(failureUpdate),
+    /status: "failed"[\s\S]*importedCount,/,
+  );
+  assert.doesNotMatch(
+    source.slice(failureUpdate),
+    /status: "failed"[\s\S]*importedCount: 0/,
+  );
+});

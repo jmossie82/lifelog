@@ -41,6 +41,10 @@ function buildBackfillRange(days: number) {
 
 function toSafeErrorMessage(error: unknown) {
   if (error instanceof Error) {
+    if (error.message === "Fieldy backfill encountered an unbounded conversation") {
+      return error.message;
+    }
+
     const match = error.message.match(/^Fieldy API request failed with \d+$/);
     if (match) {
       return match[0];
@@ -103,13 +107,17 @@ async function finishSyncRun({
   }
 }
 
-function getConversationTranscriptionRange(
-  conversation: { startTime?: string | null; endTime?: string | null },
-  fallbackRange: { startTime: string; endTime: string },
-) {
+function getConversationTranscriptionRange(conversation: {
+  startTime?: string | null;
+  endTime?: string | null;
+}) {
+  if (!conversation.startTime || !conversation.endTime) {
+    throw new Error("Fieldy backfill encountered an unbounded conversation");
+  }
+
   return {
-    startTime: conversation.startTime ?? fallbackRange.startTime,
-    endTime: conversation.endTime ?? fallbackRange.endTime,
+    startTime: conversation.startTime,
+    endTime: conversation.endTime,
   };
 }
 
@@ -120,6 +128,7 @@ function getConversationTasks(tasks: FieldyTask[], conversationId: string) {
 export async function backfillFieldy() {
   let supabase: SupabaseAdminClient | null = null;
   let syncRunId: string | null = null;
+  let importedCount = 0;
 
   try {
     const ownerUserId = getOwnerUserId();
@@ -148,11 +157,10 @@ export async function backfillFieldy() {
     });
     const tasks = await fieldyClient.fetchTasks();
     const ingestion = createIngestionService({ supabase, ownerUserId });
-    let importedCount = 0;
 
     for (const conversation of conversations) {
       const transcriptions = await fieldyClient.fetchTranscriptions(
-        getConversationTranscriptionRange(conversation, range),
+        getConversationTranscriptionRange(conversation),
       );
       const result = await ingestion.ingestConversationSet({
         conversation,
@@ -179,7 +187,7 @@ export async function backfillFieldy() {
           supabase,
           syncRunId,
           status: "failed",
-          importedCount: 0,
+          importedCount,
           errorMessage: toSafeErrorMessage(error),
         });
       } catch {
