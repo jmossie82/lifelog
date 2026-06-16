@@ -21,8 +21,13 @@ import {
   UsersRound,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import {
+  filterConversationsByTab,
+  type ConversationFilterTab,
+  type ConversationFilterType,
+} from "@/lib/fieldy/conversation-filters";
 
-type ConversationType = "conversation" | "note" | "task" | "mention";
+type ConversationType = ConversationFilterType;
 
 type Conversation = {
   id: string;
@@ -172,7 +177,7 @@ function getConversationIcon(type: ConversationType) {
 }
 
 export function LifelogDashboard() {
-  const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>("All");
+  const [activeTab, setActiveTab] = useState<ConversationFilterTab>("All");
   const [tasks, setTasks] = useState(initialTasks);
   const [chatInput, setChatInput] = useState("");
   const [recallAnswer, setRecallAnswer] = useState(
@@ -180,9 +185,7 @@ export function LifelogDashboard() {
   );
 
   const visibleConversations = useMemo(() => {
-    if (activeTab === "All") return conversations;
-    const tabType = activeTab.toLowerCase().replace("s", "") as ConversationType;
-    return conversations.filter((conversation) => conversation.type === tabType);
+    return filterConversationsByTab(conversations, activeTab);
   }, [activeTab]);
 
   const openTaskCount = tasks.filter((task) => !task.done).length;
