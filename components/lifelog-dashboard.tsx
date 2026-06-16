@@ -309,14 +309,13 @@ export function LifelogDashboard() {
 
             <div className="timeline-card">
               <div className="timeline-toolbar">
-                <div className="tab-list" role="tablist" aria-label="Timeline filters">
+                <div className="tab-list" role="group" aria-label="Timeline filters">
                   {tabs.map((tab) => (
                     <button
-                      aria-selected={activeTab === tab}
+                      aria-pressed={activeTab === tab}
                       className={activeTab === tab ? "tab is-active" : "tab"}
                       key={tab}
                       onClick={() => setActiveTab(tab)}
-                      role="tab"
                       type="button"
                     >
                       {tab}
@@ -396,7 +395,12 @@ export function LifelogDashboard() {
                 ].map(([keyword, count]) => (
                   <div className="keyword-row" key={keyword}>
                     <span>{keyword}</span>
-                    <meter max="20" min="0" value={count as number} />
+                    <meter
+                      aria-label={`${keyword} keyword count`}
+                      max="20"
+                      min="0"
+                      value={count as number}
+                    />
                     <em>{count}</em>
                   </div>
                 ))}
