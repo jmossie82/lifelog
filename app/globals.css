@@ -911,3 +911,58 @@ button {
     justify-self: end;
   }
 }
+
+.login-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background: var(--background);
+}
+
+.login-panel {
+  display: grid;
+  gap: 16px;
+  width: min(100%, 380px);
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.login-panel h1,
+.login-panel p {
+  margin: 0;
+}
+
+.login-panel label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.login-panel input {
+  min-height: 42px;
+  padding: 0 12px;
+  color: var(--ink);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: #fff;
+}
+
+.login-panel button {
+  min-height: 42px;
+  color: #fff;
+  border: 0;
+  border-radius: 7px;
+  background: var(--green);
+  font-weight: 720;
+}
+
+.login-error {
+  color: #9b1c31;
+  font-size: 14px;
+}
