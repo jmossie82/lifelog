@@ -143,3 +143,47 @@ test("one 429 response is retried before succeeding", async () => {
   assert.deepEqual(items, [{ id: "retry-success", text: "Hello again" }]);
   assert.equal(requestedUrls.length, 2);
 });
+
+test("absent empty or invalid retry-after uses the fallback retry delay before retrying", async () => {
+  const cases: Array<{ name: string; headers?: HeadersInit }> = [
+    { name: "absent" },
+    { name: "empty", headers: { "retry-after": "" } },
+    { name: "invalid", headers: { "retry-after": "not-a-number" } },
+  ];
+
+  for (const retryAfterCase of cases) {
+    const requestedUrls: string[] = [];
+    const requestedDelays: number[] = [];
+    const fetchImpl = async (url: string) => {
+      requestedUrls.push(url);
+      if (requestedUrls.length === 1) {
+        return jsonResponse(
+          { error: "rate limited" },
+          {
+            status: 429,
+            headers: retryAfterCase.headers,
+          },
+        );
+      }
+
+      return jsonResponse({
+        items: [{ id: `${retryAfterCase.name}-fallback-delay-success`, text: "Delayed hello" }],
+        nextCursor: null,
+      });
+    };
+    const client = createFieldyClient({
+      apiKey: "test-key",
+      fetchImpl,
+      fallbackRetryDelayMs: 25,
+      sleepImpl: async (delayMs) => {
+        requestedDelays.push(delayMs);
+      },
+    });
+
+    const items = await client.fetchTranscriptions({ startTime: "2026-06-16T12:00:00.000Z" });
+
+    assert.deepEqual(items, [{ id: `${retryAfterCase.name}-fallback-delay-success`, text: "Delayed hello" }]);
+    assert.deepEqual(requestedDelays, [25], retryAfterCase.name);
+    assert.equal(requestedUrls.length, 2);
+  }
+});

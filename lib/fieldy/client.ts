@@ -24,6 +24,7 @@ type FieldyClientOptions = {
   fetchImpl?: FetchImpl;
   fallbackRetryDelayMs?: number;
   minRequestSpacingMs?: number;
+  sleepImpl?: (ms: number) => Promise<unknown>;
 };
 
 type ConversationRange = {
@@ -55,6 +56,7 @@ export function createFieldyClient({
   fetchImpl = fetch,
   fallbackRetryDelayMs = 60_000,
   minRequestSpacingMs = 0,
+  sleepImpl = sleep,
 }: FieldyClientOptions) {
   let lastRequestAt = 0;
 
@@ -63,7 +65,7 @@ export function createFieldyClient({
 
     const elapsedMs = Date.now() - lastRequestAt;
     if (elapsedMs < minRequestSpacingMs) {
-      await sleep(minRequestSpacingMs - elapsedMs);
+      await sleepImpl(minRequestSpacingMs - elapsedMs);
     }
   }
 
@@ -81,11 +83,14 @@ export function createFieldyClient({
       lastRequestAt = Date.now();
 
       if (response.status === 429 && attempt === 0) {
-        const retryAfterSeconds = Number(response.headers.get("retry-after"));
-        const cooldownMs = Number.isFinite(retryAfterSeconds)
+        const retryAfterHeader = response.headers.get("retry-after");
+        const retryAfterSeconds = retryAfterHeader?.trim()
+          ? Number(retryAfterHeader)
+          : Number.NaN;
+        const cooldownMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0
           ? retryAfterSeconds * 1000
           : fallbackRetryDelayMs;
-        await sleep(cooldownMs);
+        await sleepImpl(cooldownMs);
         continue;
       }
 
