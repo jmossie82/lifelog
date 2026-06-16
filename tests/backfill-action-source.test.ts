@@ -45,3 +45,10 @@ test("backfill action records partial imported count on failure", () => {
     /status: "failed"[\s\S]*importedCount: 0/,
   );
 });
+
+test("backfill action counts every ingested row", () => {
+  assert.match(
+    source,
+    /importedCount \+=\s*result\.conversationCount \+\s*result\.transcriptionCount \+\s*result\.taskCount/,
+  );
+});

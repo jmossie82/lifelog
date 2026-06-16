@@ -167,7 +167,8 @@ export async function backfillFieldy() {
         transcriptions,
         tasks: getConversationTasks(tasks, conversation.id),
       });
-      importedCount += result.conversationCount;
+      importedCount +=
+        result.conversationCount + result.transcriptionCount + result.taskCount;
     }
 
     await finishSyncRun({
