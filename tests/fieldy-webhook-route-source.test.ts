@@ -19,6 +19,13 @@ test("webhook route reconciles with Fieldy REST before ingestion", () => {
   assert.match(source, /ingestConversationSet/);
 });
 
+test("webhook route matches webhook text by containment", () => {
+  assert.match(source, /if \(!webhookText\)/);
+  assert.match(source, /canonicalText\.includes\(webhookText\)/);
+  assert.match(source, /some\(\(segment\)/);
+  assert.match(source, /canonicalText\.includes\(segment\)/);
+});
+
 test("webhook route records sync runs without raw transcript error text", () => {
   assert.match(source, /source: "webhook"/);
   assert.match(source, /error_message/);

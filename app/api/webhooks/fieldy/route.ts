@@ -66,15 +66,22 @@ function matchesWebhookPayload(
   payload: FieldyWebhookPayload,
   transcriptions: FieldyTranscription[],
 ) {
+  const webhookText = normalizeText(payload.transcription);
+  if (!webhookText) {
+    return false;
+  }
+
   const canonicalText = normalizeText(
     transcriptions.map((transcription) => transcription.text).join(" "),
   );
-  const webhookText = normalizeText(payload.transcription);
-  const webhookSegmentText = normalizeText(
-    payload.transcriptions.map((segment) => segment.text).join(" "),
-  );
+  const webhookSegmentTexts = payload.transcriptions
+    .map((segment) => normalizeText(segment.text))
+    .filter(Boolean);
 
-  return canonicalText === webhookText || canonicalText === webhookSegmentText;
+  return (
+    canonicalText.includes(webhookText) ||
+    webhookSegmentTexts.some((segment) => canonicalText.includes(segment))
+  );
 }
 
 async function createSyncRun(
