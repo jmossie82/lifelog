@@ -2,16 +2,16 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { getFieldyEnv, getOwnerUserId } from "@/lib/env";
 import { createFieldyClient, FieldyApiError } from "@/lib/fieldy/client";
-import type {
-  FieldyTranscription,
-  FieldyWebhookPayload,
-} from "@/lib/fieldy/types";
+import {
+  buildWindow,
+  selectMatchingConversationSets,
+  type FieldyConversationSetCandidate,
+} from "@/lib/fieldy/webhook-reconciliation";
 import { validateFieldyWebhookPayload } from "@/lib/fieldy/webhook-validation";
 import { createIngestionService } from "@/lib/lifelog/ingestion";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/supabase/types";
 
-const RECONCILIATION_WINDOW_MINUTES = 30;
 const FIELDY_REQUEST_SPACING_MS = 2100;
 
 type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>;
@@ -30,22 +30,6 @@ type SyncRunsTable = {
   };
 };
 
-function buildWindow(date: string) {
-  const webhookDate = new Date(date);
-  const webhookTime = webhookDate.getTime();
-
-  if (Number.isNaN(webhookTime)) {
-    throw new Error("Invalid Fieldy webhook date");
-  }
-
-  const windowMs = RECONCILIATION_WINDOW_MINUTES * 60 * 1000;
-
-  return {
-    startTime: new Date(webhookTime - windowMs).toISOString(),
-    endTime: new Date(webhookTime + windowMs).toISOString(),
-  };
-}
-
 function toSafeErrorMessage(error: unknown) {
   if (error instanceof FieldyApiError) {
     return error.message;
@@ -56,32 +40,6 @@ function toSafeErrorMessage(error: unknown) {
   }
 
   return "Fieldy webhook reconciliation failed";
-}
-
-function normalizeText(value: string) {
-  return value.toLowerCase().replace(/\s+/g, " ").trim();
-}
-
-function matchesWebhookPayload(
-  payload: FieldyWebhookPayload,
-  transcriptions: FieldyTranscription[],
-) {
-  const webhookText = normalizeText(payload.transcription);
-  if (!webhookText) {
-    return false;
-  }
-
-  const canonicalText = normalizeText(
-    transcriptions.map((transcription) => transcription.text).join(" "),
-  );
-  const webhookSegmentTexts = payload.transcriptions
-    .map((segment) => normalizeText(segment.text))
-    .filter(Boolean);
-
-  return (
-    canonicalText.includes(webhookText) ||
-    webhookSegmentTexts.some((segment) => canonicalText.includes(segment))
-  );
 }
 
 async function createSyncRun(
@@ -140,6 +98,7 @@ async function finishSyncRun({
 export async function POST(request: NextRequest) {
   let supabase: SupabaseAdminClient | null = null;
   let syncRunId: string | null = null;
+  let importedCount = 0;
 
   try {
     const { fieldyApiKey, fieldyWebhookSecret } = getFieldyEnv();
@@ -198,8 +157,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    let importedCount = 0;
-    let matchedCount = 0;
+    const candidateSets: FieldyConversationSetCandidate[] = [];
 
     for (const conversation of conversations) {
       const transcriptions = await fieldyClient.fetchTranscriptions({
@@ -207,23 +165,18 @@ export async function POST(request: NextRequest) {
         endTime: conversation.endTime ?? window.endTime,
       });
 
-      if (!matchesWebhookPayload(validation.payload, transcriptions)) {
-        continue;
-      }
-
-      const result = await ingestion.ingestConversationSet({
-        conversation,
+      candidateSets.push({
         transcriptions,
-        tasks: [],
+        conversation,
       });
-      matchedCount += 1;
-      importedCount +=
-        result.conversationCount +
-        result.transcriptionCount +
-        result.taskCount;
     }
 
-    if (matchedCount === 0) {
+    const matchingSets = selectMatchingConversationSets(
+      validation.payload,
+      candidateSets,
+    );
+
+    if (matchingSets.length === 0) {
       const errorMessage = "No canonical Fieldy transcription matched webhook text";
       await finishSyncRun({
         supabase,
@@ -239,6 +192,32 @@ export async function POST(request: NextRequest) {
         status: "failed",
       });
     }
+
+    if (matchingSets.length > 1) {
+      const errorMessage = "Multiple canonical Fieldy conversations matched webhook text";
+      await finishSyncRun({
+        supabase,
+        syncRunId,
+        status: "failed",
+        importedCount: 0,
+        errorMessage,
+      });
+
+      return NextResponse.json({
+        accepted: true,
+        importedCount: 0,
+        status: "failed",
+      });
+    }
+
+    const matchedSet = matchingSets[0];
+    const result = await ingestion.ingestConversationSet({
+      conversation: matchedSet.conversation,
+      transcriptions: matchedSet.transcriptions,
+      tasks: [],
+    });
+    importedCount =
+      result.conversationCount + result.transcriptionCount + result.taskCount;
 
     await finishSyncRun({
       supabase,
@@ -259,7 +238,7 @@ export async function POST(request: NextRequest) {
           supabase,
           syncRunId,
           status: "failed",
-          importedCount: 0,
+          importedCount,
           errorMessage: toSafeErrorMessage(error),
         });
       } catch {
