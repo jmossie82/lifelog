@@ -157,7 +157,7 @@ export function LifelogDashboard({ data }: { data: DashboardData }) {
       summary: conversation.summary,
       duration: formatDuration(conversation.startedAt, conversation.endedAt),
       tasks: taskCountsByConversationId.get(conversation.id) ?? 0,
-      type: "conversation",
+      type: conversation.type,
       day: getConversationDay(conversation.startedAt),
     }));
   }, [data.conversations, taskCountsByConversationId]);

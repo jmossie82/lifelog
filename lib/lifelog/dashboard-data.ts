@@ -1,16 +1,32 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import type { Database } from "@/lib/supabase/types";
+import type { Database, Json } from "@/lib/supabase/types";
 
 type ConversationTableRow = Database["public"]["Tables"]["conversations"]["Row"];
 type TaskTableRow = Database["public"]["Tables"]["tasks"]["Row"];
 type SyncRunTableRow = Database["public"]["Tables"]["sync_runs"]["Row"];
 
 export const OPEN_TASK_STATUSES = ["new", "approved"] as const;
+const DASHBOARD_CONVERSATION_TYPES = [
+  "conversation",
+  "note",
+  "task",
+  "mention",
+] as const;
+
+export type DashboardConversationType =
+  (typeof DASHBOARD_CONVERSATION_TYPES)[number];
 
 export type DashboardConversationRow = Pick<
   ConversationTableRow,
-  "id" | "fieldy_id" | "title" | "summary" | "started_at" | "ended_at" | "keywords"
+  | "id"
+  | "fieldy_id"
+  | "title"
+  | "summary"
+  | "started_at"
+  | "ended_at"
+  | "keywords"
+  | "fieldy_metadata"
 >;
 
 export type DashboardTaskRow = Pick<
@@ -38,6 +54,7 @@ export type DashboardData = {
     startedAt: string | null;
     endedAt: string | null;
     keywords: string[];
+    type: DashboardConversationType;
   }>;
   tasks: Array<{
     id: string;
@@ -72,6 +89,7 @@ export function mapDashboardData({
       startedAt: conversation.started_at,
       endedAt: conversation.ended_at,
       keywords: conversation.keywords,
+      type: mapFieldyConversationType(conversation.fieldy_metadata),
     })),
     tasks: tasks.map((task) => ({
       id: task.id,
@@ -86,6 +104,29 @@ export function mapDashboardData({
   };
 }
 
+function mapFieldyConversationType(
+  fieldyMetadata: Json | undefined,
+): DashboardConversationType {
+  if (
+    !fieldyMetadata ||
+    Array.isArray(fieldyMetadata) ||
+    typeof fieldyMetadata !== "object"
+  ) {
+    return "conversation";
+  }
+
+  const fieldyType = fieldyMetadata.type;
+  if (typeof fieldyType !== "string") {
+    return "conversation";
+  }
+
+  return DASHBOARD_CONVERSATION_TYPES.includes(
+    fieldyType as DashboardConversationType,
+  )
+    ? (fieldyType as DashboardConversationType)
+    : "conversation";
+}
+
 export async function getDashboardData(
   supabase: SupabaseClient<Database>,
 ): Promise<DashboardData> {
@@ -93,7 +134,9 @@ export async function getDashboardData(
     await Promise.all([
       supabase
         .from("conversations")
-        .select("id, fieldy_id, title, summary, started_at, ended_at, keywords")
+        .select(
+          "id, fieldy_id, title, summary, started_at, ended_at, keywords, fieldy_metadata",
+        )
         .order("started_at", { ascending: false, nullsFirst: false })
         .limit(50),
       supabase

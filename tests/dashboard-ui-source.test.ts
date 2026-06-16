@@ -13,3 +13,8 @@ test("dashboard distinguishes imported-empty from filtered-empty timeline states
     /visibleConversations\.length === 0 \? \(\s*<section className="empty-state">/,
   );
 });
+
+test("dashboard uses mapped persisted conversation type for timeline filters", () => {
+  assert.match(source, /type:\s*conversation\.type/);
+  assert.doesNotMatch(source, /type:\s*"conversation"/);
+});

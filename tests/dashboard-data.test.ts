@@ -118,6 +118,114 @@ test("mapDashboardData counts only explicit open task statuses", () => {
   assert.equal(data.openTaskCount, 2);
 });
 
+test("mapDashboardData maps persisted Fieldy conversation types", () => {
+  const data = mapDashboardData({
+    conversations: [
+      {
+        id: "conversation-1",
+        fieldy_id: "fieldy-conversation-1",
+        title: "Conversation",
+        summary: null,
+        started_at: null,
+        ended_at: null,
+        keywords: [],
+        fieldy_metadata: { type: "conversation" },
+      },
+      {
+        id: "note-1",
+        fieldy_id: "fieldy-note-1",
+        title: "Note",
+        summary: null,
+        started_at: null,
+        ended_at: null,
+        keywords: [],
+        fieldy_metadata: { type: "note" },
+      },
+      {
+        id: "task-1",
+        fieldy_id: "fieldy-task-1",
+        title: "Task",
+        summary: null,
+        started_at: null,
+        ended_at: null,
+        keywords: [],
+        fieldy_metadata: { type: "task" },
+      },
+      {
+        id: "mention-1",
+        fieldy_id: "fieldy-mention-1",
+        title: "Mention",
+        summary: null,
+        started_at: null,
+        ended_at: null,
+        keywords: [],
+        fieldy_metadata: { type: "mention" },
+      },
+    ],
+    tasks: [],
+    syncRuns: [],
+  });
+
+  assert.deepEqual(
+    data.conversations.map((conversation) => conversation.type),
+    ["conversation", "note", "task", "mention"],
+  );
+});
+
+test("mapDashboardData defaults unsafe or unknown Fieldy types to conversation", () => {
+  const data = mapDashboardData({
+    conversations: [
+      {
+        id: "null-metadata",
+        fieldy_id: "fieldy-null-metadata",
+        title: null,
+        summary: null,
+        started_at: null,
+        ended_at: null,
+        keywords: [],
+        fieldy_metadata: null,
+      },
+      {
+        id: "unknown-type",
+        fieldy_id: "fieldy-unknown-type",
+        title: null,
+        summary: null,
+        started_at: null,
+        ended_at: null,
+        keywords: [],
+        fieldy_metadata: { type: "meeting" },
+      },
+      {
+        id: "non-string-type",
+        fieldy_id: "fieldy-non-string-type",
+        title: null,
+        summary: null,
+        started_at: null,
+        ended_at: null,
+        keywords: [],
+        fieldy_metadata: { type: 42 },
+      },
+      {
+        id: "array-metadata",
+        fieldy_id: "fieldy-array-metadata",
+        title: null,
+        summary: null,
+        started_at: null,
+        ended_at: null,
+        keywords: [],
+        fieldy_metadata: ["mention"],
+      },
+    ],
+    tasks: [],
+    syncRuns: [],
+  });
+
+  assert.deepEqual(
+    data.conversations.map((conversation) => conversation.type),
+    ["conversation", "conversation", "conversation", "conversation"],
+  );
+});
+
 test("getDashboardData uses exact open task count beyond limited task rows", async () => {
   const calls: Array<{
     table: string;
