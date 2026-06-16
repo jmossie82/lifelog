@@ -144,11 +144,12 @@ test("one 429 response is retried before succeeding", async () => {
   assert.equal(requestedUrls.length, 2);
 });
 
-test("absent empty or invalid retry-after uses the fallback retry delay before retrying", async () => {
+test("absent empty invalid or negative retry-after uses the fallback retry delay before retrying", async () => {
   const cases: Array<{ name: string; headers?: HeadersInit }> = [
     { name: "absent" },
     { name: "empty", headers: { "retry-after": "" } },
     { name: "invalid", headers: { "retry-after": "not-a-number" } },
+    { name: "negative", headers: { "retry-after": "-1" } },
   ];
 
   for (const retryAfterCase of cases) {
