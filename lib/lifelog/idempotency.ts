@@ -54,5 +54,8 @@ export function deriveFieldyTaskId(
     title: task.title,
     date: task.date ?? null,
     status: task.status,
+    memoryId: task.memoryId ?? null,
+    completionDate: task.completionDate ?? null,
+    cancellationDate: task.cancellationDate ?? null,
   })}`;
 }

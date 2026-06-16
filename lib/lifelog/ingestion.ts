@@ -8,10 +8,7 @@ import type {
 } from "../fieldy/types.ts";
 import type { Database, Json } from "../supabase/types.ts";
 
-export type IngestionSupabase = Pick<
-  SupabaseClient<Database, "public", Database["public"]>,
-  "from"
->;
+export type IngestionSupabase = Pick<SupabaseClient, "from">;
 
 export type ConversationSet = {
   conversation: FieldyConversation;

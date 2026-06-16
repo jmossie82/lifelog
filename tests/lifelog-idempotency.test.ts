@@ -76,3 +76,30 @@ test("deriveFieldyTaskId derives stable id without task id", () => {
   assert.match(first, /^derived-task-conversation-1-[a-f0-9]{24}$/);
   assert.equal(first, second);
 });
+
+test("deriveFieldyTaskId avoids collisions across stable task metadata", () => {
+  const completed = deriveFieldyTaskId("conversation-1", {
+    title: "Send launch notes",
+    date: "2026-06-17T15:00:00.000Z",
+    status: "completed",
+    memoryId: "conversation-1",
+    completionDate: "2026-06-17T16:00:00.000Z",
+  });
+  const cancelled = deriveFieldyTaskId("conversation-1", {
+    title: "Send launch notes",
+    date: "2026-06-17T15:00:00.000Z",
+    status: "completed",
+    memoryId: "conversation-1",
+    cancellationDate: "2026-06-17T16:00:00.000Z",
+  });
+  const otherMemory = deriveFieldyTaskId("conversation-1", {
+    title: "Send launch notes",
+    date: "2026-06-17T15:00:00.000Z",
+    status: "completed",
+    memoryId: "conversation-2",
+    completionDate: "2026-06-17T16:00:00.000Z",
+  });
+
+  assert.notEqual(completed, cancelled);
+  assert.notEqual(completed, otherMemory);
+});
