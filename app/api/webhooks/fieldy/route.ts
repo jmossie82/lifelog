@@ -233,12 +233,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const matchedTranscriptions = await fieldyClient.fetchTranscriptions(
-      safety.transcriptionRange,
-    );
     const result = await ingestion.ingestConversationSet({
       conversation: matchedSet.conversation,
-      transcriptions: matchedTranscriptions,
+      transcriptions: matchedSet.transcriptions,
       tasks: [],
     });
     importedCount =

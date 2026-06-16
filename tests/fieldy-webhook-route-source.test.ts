@@ -31,6 +31,13 @@ test("webhook route reconciles with Fieldy REST before ingestion", () => {
   assert.match(source, /ingestConversationSet/);
 });
 
+test("webhook route reuses matched candidate transcriptions for ingestion", () => {
+  const transcriptionFetches = source.match(/fetchTranscriptions/g) ?? [];
+
+  assert.equal(transcriptionFetches.length, 1);
+  assert.match(source, /transcriptions: matchedSet\.transcriptions/);
+});
+
 test("webhook reconciliation matches text by hardened containment", () => {
   assert.match(reconciliationSource, /FULL_TRANSCRIPT_MIN_LENGTH/);
   assert.match(reconciliationSource, /SEGMENT_MIN_LENGTH/);
@@ -74,7 +81,7 @@ test("webhook route checks interval safety before ingestion", () => {
     reconciliationSource,
     /Multiple Fieldy conversation intervals overlapped webhook match/,
   );
-  assert.match(source, /safety\.transcriptionRange/);
+  assert.match(source, /fetchTranscriptions\(transcriptionRange\)/);
   assert.doesNotMatch(source, /conversation\.startTime \?\? window\.startTime/);
   assert.doesNotMatch(source, /conversation\.endTime \?\? window\.endTime/);
 });
