@@ -76,6 +76,21 @@ test("does not match a single short common segment", () => {
   );
 });
 
+test("does not match a short common top-level transcript by itself", () => {
+  const webhook = payload({
+    transcription: "thank you very much",
+    segments: ["thank you very much"],
+  });
+
+  assert.equal(
+    matchesWebhookPayload(
+      webhook,
+      transcriptions(["Great, thank you very much. I will follow up later."]),
+    ),
+    false,
+  );
+});
+
 test("matches empty top-level transcript with enough eligible segment evidence", () => {
   const webhook = payload({
     transcription: "",
