@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { LifelogDashboard } from "@/components/lifelog-dashboard";
 import { getOwnerUserId } from "@/lib/env";
+import { getDashboardData } from "@/lib/lifelog/dashboard-data";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export default async function Home() {
@@ -17,5 +18,7 @@ export default async function Home() {
     redirect("/login?error=invalid_credentials");
   }
 
-  return <LifelogDashboard />;
+  const dashboardData = await getDashboardData(supabase);
+
+  return <LifelogDashboard data={dashboardData} />;
 }

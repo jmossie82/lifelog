@@ -198,6 +198,10 @@ button {
   background: var(--green-strong);
 }
 
+.sidebar form {
+  display: grid;
+}
+
 .profile-button {
   gap: 10px;
   justify-content: flex-start;
@@ -364,6 +368,23 @@ button {
   justify-content: space-between;
   padding: 14px;
   border-bottom: 1px solid var(--border);
+}
+
+.empty-state {
+  display: grid;
+  gap: 8px;
+  padding: 36px 20px;
+  text-align: center;
+  border-top: 1px solid var(--border);
+}
+
+.empty-state h2,
+.empty-state p {
+  margin: 0;
+}
+
+.empty-state p {
+  color: var(--muted);
 }
 
 .tab-list {
