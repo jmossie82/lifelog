@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-const source = readFileSync("app/actions/backfill-fieldy.ts", "utf8");
+const source = [
+  readFileSync("app/actions/backfill-fieldy.ts", "utf8"),
+  readFileSync("app/actions/backfill-fieldy-core.ts", "utf8"),
+].join("\n");
 
 test("backfill action verifies owner with getUser", () => {
   assert.match(source, /"use server"/);
