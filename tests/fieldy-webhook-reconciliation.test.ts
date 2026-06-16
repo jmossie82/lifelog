@@ -122,6 +122,46 @@ test("matches exact short segment equality", () => {
   );
 });
 
+test("matches exact short segment equality with nearby canonical segments", () => {
+  const webhook = payload({
+    transcription: "",
+    segments: ["Hi, my name is Adam."],
+  });
+
+  assert.equal(
+    matchesWebhookPayload(
+      webhook,
+      transcriptions([
+        "Small talk before the greeting.",
+        "Hi, my name is Adam.",
+        "Extra nearby REST segment after the greeting.",
+      ]),
+    ),
+    true,
+  );
+});
+
+test("does not count common phrases as fallback segment evidence", () => {
+  const webhook = payload({
+    transcription: "",
+    segments: [
+      "thank you very much",
+      "Schedule the router replacement.",
+    ],
+  });
+
+  assert.equal(
+    matchesWebhookPayload(
+      webhook,
+      transcriptions([
+        "thank you very much",
+        "Schedule the router replacement.",
+      ]),
+    ),
+    false,
+  );
+});
+
 test("matches empty top-level transcript with enough eligible segment evidence", () => {
   const webhook = payload({
     transcription: "",

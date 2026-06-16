@@ -9,6 +9,15 @@ const FULL_TRANSCRIPT_MIN_LENGTH = 40;
 const SEGMENT_MIN_LENGTH = 12;
 const SINGLE_SEGMENT_MIN_LENGTH = 40;
 const MULTI_SEGMENT_REQUIRED_MATCHES = 2;
+const COMMON_FALLBACK_SEGMENTS = new Set([
+  "thank you very much",
+  "thank you",
+  "thanks",
+  "okay",
+  "ok",
+  "yes",
+  "no",
+]);
 
 export type FieldyConversationSetCandidate = {
   conversation: FieldyConversation;
@@ -56,6 +65,9 @@ export function matchesWebhookPayload(
   payload: FieldyWebhookPayload,
   transcriptions: FieldyTranscription[],
 ) {
+  const canonicalSegments = transcriptions.map((transcription) =>
+    normalizeText(transcription.text),
+  );
   const canonicalText = normalizeText(
     transcriptions.map((transcription) => transcription.text).join(" "),
   );
@@ -72,12 +84,17 @@ export function matchesWebhookPayload(
     return true;
   }
 
-  const eligibleSegments = Array.from(
+  const webhookSegments = Array.from(
     new Set(
       payload.transcriptions
         .map((segment) => normalizeText(segment.text))
-        .filter((segment) => segment.length >= SEGMENT_MIN_LENGTH),
+        .filter(Boolean),
     ),
+  );
+  const eligibleSegments = webhookSegments.filter(
+    (segment) =>
+      segment.length >= SEGMENT_MIN_LENGTH &&
+      !COMMON_FALLBACK_SEGMENTS.has(segment),
   );
 
   if (eligibleSegments.length === 0) {
@@ -88,7 +105,10 @@ export function matchesWebhookPayload(
     canonicalText.includes(segment),
   );
 
-  if (eligibleSegments.some((segment) => canonicalText === segment)) {
+  if (
+    webhookSegments.length === 1 &&
+    eligibleSegments.some((segment) => canonicalSegments.includes(segment))
+  ) {
     return true;
   }
 
