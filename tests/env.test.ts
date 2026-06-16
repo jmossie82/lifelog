@@ -75,6 +75,17 @@ test("getFieldyEnv rejects invalid FIELDY_BACKFILL_DAYS", () => {
   );
 });
 
+test("getFieldyEnv rejects partially numeric FIELDY_BACKFILL_DAYS", () => {
+  process.env.FIELDY_API_KEY = "sk-fieldy-example";
+  process.env.FIELDY_WEBHOOK_SECRET = "secret";
+  process.env.FIELDY_BACKFILL_DAYS = "10abc";
+
+  assert.throws(
+    () => getFieldyEnv(),
+    /FIELDY_BACKFILL_DAYS must be a positive integer/,
+  );
+});
+
 test("getOwnerUserId returns the configured owner user id", () => {
   process.env.LIFELOG_OWNER_USER_ID = "00000000-0000-4000-8000-000000000001";
 

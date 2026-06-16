@@ -22,9 +22,13 @@ export function getSupabaseAdminEnv() {
 
 export function getFieldyEnv() {
   const configuredDays = process.env.FIELDY_BACKFILL_DAYS ?? "30";
-  const fieldyBackfillDays = Number.parseInt(configuredDays, 10);
+  const fieldyBackfillDays = Number(configuredDays);
 
-  if (!Number.isInteger(fieldyBackfillDays) || fieldyBackfillDays < 1) {
+  if (
+    !/^\d+$/.test(configuredDays) ||
+    !Number.isInteger(fieldyBackfillDays) ||
+    fieldyBackfillDays < 1
+  ) {
     throw new Error("FIELDY_BACKFILL_DAYS must be a positive integer");
   }
 
