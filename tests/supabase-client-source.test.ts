@@ -25,3 +25,22 @@ test("proxy refreshes auth through getUser", () => {
   assert.match(source, /auth\.getUser\(\)/);
   assert.match(source, /setAll/);
 });
+
+test("password sign-in clears non-owner sessions", () => {
+  const source = readFileSync("app/auth/actions.ts", "utf8");
+
+  assert.match(source, /getOwnerUserId/);
+  assert.match(source, /user\?\.id !== getOwnerUserId\(\)/);
+  assert.match(source, /auth\.signOut\(\)/);
+
+  const ownerCheckIndex = source.indexOf("user?.id !== getOwnerUserId()");
+  const signOutIndex = source.indexOf("auth.signOut()", ownerCheckIndex);
+  const redirectIndex = source.indexOf(
+    'redirect("/login?error=invalid_credentials")',
+    signOutIndex,
+  );
+
+  assert.notEqual(ownerCheckIndex, -1);
+  assert.notEqual(signOutIndex, -1);
+  assert.notEqual(redirectIndex, -1);
+});

@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { getOwnerUserId } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function readFormString(formData: FormData, key: string) {
@@ -17,9 +18,17 @@ export async function signInWithPassword(formData: FormData) {
   }
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
+    redirect("/login?error=invalid_credentials");
+  }
+
+  if (user?.id !== getOwnerUserId()) {
+    await supabase.auth.signOut();
     redirect("/login?error=invalid_credentials");
   }
 
