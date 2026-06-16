@@ -23,13 +23,14 @@ create table public.conversations (
   fieldy_metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (user_id, fieldy_id)
+  unique (user_id, fieldy_id),
+  unique (user_id, id)
 );
 
 create table public.transcriptions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  conversation_id uuid not null references public.conversations(id) on delete cascade,
+  conversation_id uuid not null,
   fieldy_segment_id text not null,
   speaker_label text,
   text text not null,
@@ -37,13 +38,16 @@ create table public.transcriptions (
   ended_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (user_id, fieldy_segment_id)
+  unique (user_id, fieldy_segment_id),
+  foreign key (user_id, conversation_id)
+    references public.conversations(user_id, id)
+    on delete cascade
 );
 
 create table public.tasks (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  conversation_id uuid references public.conversations(id) on delete set null,
+  conversation_id uuid,
   fieldy_task_id text not null,
   title text not null,
   status text not null,
@@ -51,7 +55,10 @@ create table public.tasks (
   fieldy_metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (user_id, fieldy_task_id)
+  unique (user_id, fieldy_task_id),
+  foreign key (user_id, conversation_id)
+    references public.conversations(user_id, id)
+    on delete set null (conversation_id)
 );
 
 create table public.sync_runs (
