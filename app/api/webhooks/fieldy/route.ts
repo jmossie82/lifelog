@@ -33,7 +33,8 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     accepted: true,
-    fieldyId: validation.payload.conversation.id,
+    transcriptionDate: validation.payload.date,
+    segments: validation.payload.transcriptions.length,
     queued: ["conversation", "transcriptions", "tasks"],
   });
 }
