@@ -434,6 +434,7 @@ export function LifelogDashboard({
             <input
               aria-label="Search conversations"
               defaultValue={data.query.q}
+              key={data.query.q}
               name="q"
               placeholder="Search conversations, topics, tasks..."
               type="search"

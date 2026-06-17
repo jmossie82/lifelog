@@ -56,6 +56,7 @@ test("dashboard uses URL-backed search and filter controls", () => {
   assert.match(source, /URLSearchParams/);
   assert.match(source, /name="q"/);
   assert.match(source, /data\.query\.q/);
+  assert.match(source, /key=\{data\.query\.q\}/);
   assert.match(source, /value:\s*"conversation"/);
   assert.match(source, /navigateWith\(\{ type: tab\.value, page: "1" \}\)/);
   assert.doesNotMatch(source, /data-query/);
