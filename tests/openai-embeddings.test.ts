@@ -4,11 +4,16 @@ import { test } from "node:test";
 import {
   createOpenAiEmbeddingClient,
   OPENAI_EMBEDDING_DIMENSIONS,
+  OPENAI_EMBEDDING_MODEL_DIMENSIONS,
 } from "../lib/lifelog/openai-embeddings.ts";
 
 const validEmbedding = Array.from(
   { length: OPENAI_EMBEDDING_DIMENSIONS },
   (_, index) => index / OPENAI_EMBEDDING_DIMENSIONS,
+);
+const validLargeEmbedding = Array.from(
+  { length: OPENAI_EMBEDDING_MODEL_DIMENSIONS["text-embedding-3-large"] },
+  (_, index) => index / OPENAI_EMBEDDING_MODEL_DIMENSIONS["text-embedding-3-large"],
 );
 
 test("createOpenAiEmbeddingClient posts sanitized embedding requests", async () => {
@@ -99,6 +104,38 @@ test("createOpenAiEmbeddingClient rejects blank input before fetch", async () =>
   await assert.rejects(
     () => client.embedText(" \n\t "),
     /Embedding input must not be empty/,
+  );
+  assert.equal(fetchCount, 0);
+});
+
+test("createOpenAiEmbeddingClient validates embeddings by model dimensions", async () => {
+  const client = createOpenAiEmbeddingClient({
+    apiKey: "sk-test",
+    embeddingModel: "text-embedding-3-large",
+    fetch: async () =>
+      new Response(JSON.stringify({ data: [{ embedding: validLargeEmbedding }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+  });
+
+  assert.deepEqual(await client.embedText("hello"), validLargeEmbedding);
+});
+
+test("createOpenAiEmbeddingClient rejects unsupported models before fetch", async () => {
+  let fetchCount = 0;
+
+  assert.throws(
+    () =>
+      createOpenAiEmbeddingClient({
+        apiKey: "sk-test",
+        embeddingModel: "unsupported-embedding-model",
+        fetch: async () => {
+          fetchCount += 1;
+          return new Response("{}");
+        },
+      }),
+    /Unsupported OpenAI embedding model/,
   );
   assert.equal(fetchCount, 0);
 });

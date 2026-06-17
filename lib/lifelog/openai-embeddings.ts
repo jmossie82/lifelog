@@ -8,6 +8,10 @@ type EmbeddingResponse = {
 
 export const OPENAI_EMBEDDING_DIMENSIONS = 1536;
 export const OPENAI_EMBEDDING_TIMEOUT_MS = 30_000;
+export const OPENAI_EMBEDDING_MODEL_DIMENSIONS = {
+  "text-embedding-3-small": OPENAI_EMBEDDING_DIMENSIONS,
+  "text-embedding-3-large": 3072,
+} as const;
 
 class OpenAiEmbeddingStatusError extends Error {}
 
@@ -22,6 +26,8 @@ export function createOpenAiEmbeddingClient({
   fetch?: FetchLike;
   timeoutMs?: number;
 }) {
+  const expectedDimensions = getExpectedEmbeddingDimensions(embeddingModel);
+
   async function embedText(input: string) {
     const normalizedInput = input.replace(/\s+/g, " ").trim();
     if (!normalizedInput) {
@@ -71,7 +77,7 @@ export function createOpenAiEmbeddingClient({
 
     if (
       !Array.isArray(embedding) ||
-      embedding.length !== OPENAI_EMBEDDING_DIMENSIONS ||
+      embedding.length !== expectedDimensions ||
       embedding.some((value) => !Number.isFinite(value))
     ) {
       throw new Error("OpenAI embedding response did not include an embedding");
@@ -85,4 +91,17 @@ export function createOpenAiEmbeddingClient({
 
 function isAbortError(error: unknown) {
   return error instanceof Error && error.name === "AbortError";
+}
+
+function getExpectedEmbeddingDimensions(embeddingModel: string) {
+  const expectedDimensions =
+    OPENAI_EMBEDDING_MODEL_DIMENSIONS[
+      embeddingModel as keyof typeof OPENAI_EMBEDDING_MODEL_DIMENSIONS
+    ];
+
+  if (!expectedDimensions) {
+    throw new Error("Unsupported OpenAI embedding model");
+  }
+
+  return expectedDimensions;
 }
