@@ -53,7 +53,11 @@ export async function embedConversations(
       embeddedCount: result.embeddedCount,
       skippedCount: result.skippedCount,
     };
-  } catch {
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("Conversation embedding failed", error);
+    }
+
     return {
       status: "error",
       message: "Conversation embedding failed. Check configuration and try again.",

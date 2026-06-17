@@ -14,14 +14,19 @@ test("embed conversations action is server-only and owner protected", () => {
   assert.match(source, /createOpenAiEmbeddingClient/);
   assert.match(source, /embedMissingConversations/);
   assert.match(source, /revalidatePath\("\/"\)/);
-  assert.doesNotMatch(source, /console\.(?:debug|error|info|log|warn)/);
+  const consoleCalls = source.match(/console\.(?:debug|error|info|log|warn)\(/g) ?? [];
+  assert.deepEqual(consoleCalls, ["console.error("]);
+  assert.match(
+    source,
+    /if\s*\(\s*process\.env\.NODE_ENV\s*===\s*"development"\s*\)\s*\{\s*console\.error\("Conversation embedding failed", error\);\s*\}/,
+  );
 });
 
 test("embed conversations action creates privileged clients only after owner authorization", () => {
-  const authIndex = source.indexOf("auth.getUser()");
-  const ownerCheckIndex = source.indexOf("user.id !== ownerUserId");
-  const adminClientIndex = source.indexOf("createSupabaseAdminClient()");
-  const openAiEnvIndex = source.indexOf("getOpenAiEmbeddingEnv()");
+  const authIndex = source.search(/auth\s*\.\s*getUser\s*\(\s*\)/);
+  const ownerCheckIndex = source.search(/user\s*\.\s*id\s*!==\s*ownerUserId/);
+  const adminClientIndex = source.search(/createSupabaseAdminClient\s*\(\s*\)/);
+  const openAiEnvIndex = source.search(/getOpenAiEmbeddingEnv\s*\(\s*\)/);
 
   assert.ok(authIndex > -1);
   assert.ok(ownerCheckIndex > authIndex);
@@ -42,7 +47,8 @@ test("embed conversations action exposes useActionState-compatible state", () =>
 });
 
 test("embed conversations action returns safe errors without raw secrets", () => {
-  assert.match(source, /catch \{/);
+  assert.match(source, /catch\s*\(\s*error\s*\)\s*\{/);
+  assert.match(source, /process\.env\.NODE_ENV === "development"/);
   assert.match(source, /Conversation embedding failed\. Check configuration and try again\./);
   assert.doesNotMatch(source, /catch\s*\([^)]*(?:error|err|e)[^)]*\)[\s\S]*message:\s*(?:error|err|e)\.message/);
   assert.doesNotMatch(source, /message:\s*.*openAiApiKey/);

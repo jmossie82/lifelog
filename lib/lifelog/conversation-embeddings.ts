@@ -60,6 +60,8 @@ export type UpdateQuery = {
 
 export type ConversationEmbeddingSupabase = SupabaseClient<Database>;
 
+const TRANSCRIPTION_QUERY_BATCH_SIZE = 200;
+
 export async function embedMissingConversations({
   supabase,
   ownerUserId,
@@ -163,21 +165,27 @@ async function fetchTranscriptionsByConversationId({
     return transcriptionsByConversationId;
   }
 
-  const { data, error } = await supabase
-    .from("transcriptions")
-    .select("id, user_id, conversation_id, speaker_label, text, started_at")
-    .eq("user_id", ownerUserId)
-    .in("conversation_id", conversationIds)
-    .order("started_at", { ascending: true, nullsFirst: false });
+  for (let start = 0; start < conversationIds.length; start += TRANSCRIPTION_QUERY_BATCH_SIZE) {
+    const conversationIdBatch = conversationIds.slice(
+      start,
+      start + TRANSCRIPTION_QUERY_BATCH_SIZE,
+    );
+    const { data, error } = await supabase
+      .from("transcriptions")
+      .select("id, user_id, conversation_id, speaker_label, text, started_at")
+      .eq("user_id", ownerUserId)
+      .in("conversation_id", conversationIdBatch)
+      .order("started_at", { ascending: true, nullsFirst: false });
 
-  if (error) {
-    throw error;
-  }
+    if (error) {
+      throw error;
+    }
 
-  for (const transcription of data ?? []) {
-    const existing = transcriptionsByConversationId.get(transcription.conversation_id) ?? [];
-    existing.push(transcription);
-    transcriptionsByConversationId.set(transcription.conversation_id, existing);
+    for (const transcription of data ?? []) {
+      const existing = transcriptionsByConversationId.get(transcription.conversation_id) ?? [];
+      existing.push(transcription);
+      transcriptionsByConversationId.set(transcription.conversation_id, existing);
+    }
   }
 
   return transcriptionsByConversationId;

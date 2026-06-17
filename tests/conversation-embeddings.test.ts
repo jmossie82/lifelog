@@ -208,6 +208,52 @@ test("embedMissingConversations fetches owner transcriptions in one batched quer
   assert.match(embeddedInputs[1], /Second transcript/);
 });
 
+test("embedMissingConversations chunks large transcription queries", async () => {
+  const updates: unknown[] = [];
+  const conversations = Array.from({ length: 201 }, (_, index) => {
+    const sequence = String(index + 1).padStart(12, "0");
+    return {
+      id: `00000000-0000-4000-8000-${sequence}`,
+      user_id: "owner-1",
+      fieldy_id: `fieldy-${index + 1}`,
+      title: "",
+      summary: "",
+      content: null,
+      keywords: [],
+      embedding_input_hash: null,
+    } satisfies ConversationEmbeddingRow;
+  });
+  const transcriptions = conversations.map((conversation, index) => ({
+    id: `10000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    user_id: "owner-1",
+    conversation_id: conversation.id,
+    speaker_label: "Jamie",
+    text: `Transcript ${index + 1}`,
+    started_at: "2026-06-17T15:00:00.000Z",
+  })) satisfies TranscriptionEmbeddingRow[];
+  const client = createEmbeddingRecordingClient({
+    conversations,
+    transcriptions,
+    updates,
+  });
+
+  const embeddedInputs: string[] = [];
+  const result = await embedMissingConversations({
+    supabase: client,
+    ownerUserId: "owner-1",
+    embeddingModel: "text-embedding-3-small",
+    embedText: async (input) => {
+      embeddedInputs.push(input);
+      return [0.1, 0.2, 0.3];
+    },
+  });
+
+  assert.equal(result.embeddedCount, 201);
+  assert.equal(client.queryCounts.transcriptions, 2);
+  assert.match(embeddedInputs[0], /Transcript 1/);
+  assert.match(embeddedInputs[200], /Transcript 201/);
+});
+
 test("embedMissingConversations skips empty conversations without embedding", async () => {
   const updates: unknown[] = [];
   const client = createEmbeddingRecordingClient({

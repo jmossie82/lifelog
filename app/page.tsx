@@ -7,6 +7,7 @@ import {
 } from "@/lib/env";
 import { getDashboardData } from "@/lib/lifelog/dashboard-data";
 import { normalizeDashboardQuery } from "@/lib/lifelog/dashboard-query";
+import { readFirstSearchParam } from "@/lib/lifelog/conversation-detail-route";
 import { createOpenAiEmbeddingClient } from "@/lib/lifelog/openai-embeddings";
 import {
   normalizeRecallQuery,
@@ -14,11 +15,6 @@ import {
   type SemanticRecallSearchResult,
 } from "@/lib/lifelog/semantic-recall";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-
-function readFirstParam(value: string | string[] | undefined) {
-  if (Array.isArray(value)) return value[0] ?? "";
-  return value ?? "";
-}
 
 export default async function Home({
   searchParams,
@@ -48,7 +44,9 @@ export default async function Home({
     displayTimeZone,
     now: renderedAt,
   });
-  const recallQuery = normalizeRecallQuery(readFirstParam(resolvedSearchParams.recall));
+  const recallQuery = normalizeRecallQuery(
+    readFirstSearchParam(resolvedSearchParams.recall),
+  );
   let semanticRecall: SemanticRecallSearchResult = { query: "", results: [] };
 
   if (recallQuery) {

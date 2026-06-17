@@ -14,12 +14,12 @@ test("dashboard page loads semantic recall results from authenticated server con
 });
 
 test("dashboard page only creates OpenAI embedding client for nonblank recall queries", () => {
-  const recallBranchStart = source.indexOf("if (recallQuery) {");
-  const recallBranchEnd = source.indexOf("\n  }\n\n  return", recallBranchStart);
-  const recallBranch = source.slice(recallBranchStart, recallBranchEnd);
+  const recallBranchMatch = source.match(
+    /if\s*\(recallQuery\)\s*\{[\s\S]*?\n\s*\}\s*\n\s*return/,
+  );
+  const recallBranch = recallBranchMatch?.[0] ?? "";
 
-  assert.ok(recallBranchStart > -1);
-  assert.ok(recallBranchEnd > recallBranchStart);
+  assert.ok(recallBranch.length > 0);
   assert.match(recallBranch, /getOpenAiEmbeddingEnv\(\)/);
   assert.match(recallBranch, /createOpenAiEmbeddingClient/);
   assert.match(recallBranch, /searchSemanticRecall\(\{/);
