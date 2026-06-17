@@ -285,6 +285,22 @@ test("getDashboardData uses exact open task count beyond limited task rows", asy
   );
 });
 
+test("getDashboardData rejects blank user id before creating queries", async () => {
+  const calls: string[] = [];
+  const client = {
+    from(table: string) {
+      calls.push(table);
+      throw new Error("query should not be created");
+    },
+  };
+
+  await assert.rejects(
+    getDashboardData(client as never, { userId: " \n\t " }),
+    /authenticated user id/,
+  );
+  assert.deepEqual(calls, []);
+});
+
 function createRecordingDashboardClient({
   calls,
   responses,

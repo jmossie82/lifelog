@@ -154,8 +154,12 @@ export async function getDashboardData(
     query?: DashboardQuery;
     displayTimeZone?: string;
     now?: Date;
-  } = { userId: "" },
+  },
 ): Promise<DashboardData> {
+  if (!options.userId.trim()) {
+    throw new Error("getDashboardData requires an authenticated user id");
+  }
+
   const query = options.query ?? { q: "", type: "all", range: "all", page: 1 };
   const now = options.now ?? new Date();
   const displayTimeZone = options.displayTimeZone ?? "America/Chicago";
