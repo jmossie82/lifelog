@@ -36,3 +36,8 @@ test("dashboard uses deterministic timezone-aware dates for hydration", () => {
   assert.doesNotMatch(source, /setDate\(/);
   assert.doesNotMatch(source, /getDate\(/);
 });
+
+test("dashboard uses safe mapped sync errors", () => {
+  assert.match(source, /data\.lastSyncDisplay\?\.displayError/);
+  assert.doesNotMatch(source, /data\.lastSync\?\.error_message/);
+});

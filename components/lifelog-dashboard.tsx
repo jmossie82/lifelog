@@ -373,7 +373,7 @@ export function LifelogDashboard({
                   {syncStatus}
                 </strong>
                 <span>
-                  {data.lastSync?.error_message ??
+                  {data.lastSyncDisplay?.displayError ??
                     (data.lastSync?.finished_at
                       ? `Last sync ${formatDate(
                           new Date(data.lastSync.finished_at),
