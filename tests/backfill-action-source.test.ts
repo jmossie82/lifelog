@@ -55,3 +55,23 @@ test("backfill action counts every ingested row", () => {
     /importedCount \+=\s*result\.conversationCount \+\s*result\.transcriptionCount \+\s*result\.taskCount/,
   );
 });
+
+const actionSource = readFileSync("app/actions/backfill-fieldy.ts", "utf8");
+const stateSource = readFileSync("lib/lifelog/backfill-action-state.ts", "utf8");
+
+test("backfill action exposes useActionState-compatible state", () => {
+  assert.match(stateSource, /export type BackfillActionState/);
+  assert.match(stateSource, /status: "idle" \| "success" \| "error"/);
+  assert.match(stateSource, /export const initialBackfillActionState/);
+  assert.match(
+    actionSource,
+    /type BackfillActionReturn<TFormData> = Promise<\s*TFormData extends FormData \? BackfillActionState : void\s*>/,
+  );
+  assert.match(
+    actionSource,
+    /backfillFieldy<[\s\S]*TFormData extends FormData \| undefined = undefined,[\s\S]*_prevStateOrFormData: BackfillActionState \| FormData,\s*_formData\?: TFormData/,
+  );
+  assert.match(actionSource, /return \{\s*status: "success"/);
+  assert.match(actionSource, /return \{\s*status: "error"/);
+  assert.doesNotMatch(actionSource, /export const initialBackfillActionState/);
+});

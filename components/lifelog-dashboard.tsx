@@ -1,18 +1,17 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import {
   AlertCircle,
   BarChart3,
-  BatteryFull,
   CalendarDays,
   Check,
   ChevronDown,
   Clock3,
-  Command,
   ListChecks,
   MessageSquareText,
   Mic2,
-  MoreVertical,
   RefreshCcw,
   Search,
   SendHorizontal,
@@ -21,19 +20,20 @@ import {
   Tags,
   UsersRound,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useActionState, useMemo, useState, useTransition } from "react";
 import { backfillFieldy } from "@/app/actions/backfill-fieldy";
 import {
-  filterConversationsByTab,
-  type ConversationFilterTab,
-  type ConversationFilterType,
-} from "@/lib/fieldy/conversation-filters";
+  initialBackfillActionState,
+  type BackfillActionState,
+} from "@/lib/lifelog/backfill-action-state";
 import type { DashboardData } from "@/lib/lifelog/dashboard-data";
+import type { DashboardConversationFilterType } from "@/lib/lifelog/dashboard-query";
 
-type ConversationType = ConversationFilterType;
+type ConversationType = DashboardData["conversations"][number]["type"];
 
 type Conversation = {
   id: string;
+  href: string;
   time: string;
   title: string;
   people: string;
@@ -63,7 +63,19 @@ const navItems = [
   { label: "Settings", icon: Settings },
 ];
 
-const tabs = ["All", "Conversations", "Notes", "Tasks", "Mentions"] as const;
+const tabs: Array<{ label: string; value: DashboardConversationFilterType }> = [
+  { label: "All", value: "all" },
+  { label: "Conversations", value: "conversation" },
+  { label: "Notes", value: "note" },
+  { label: "Tasks", value: "task" },
+  { label: "Mentions", value: "mention" },
+];
+
+const ranges = [
+  { label: "All time", value: "all" },
+  { label: "Today", value: "today" },
+  { label: "Week", value: "week" },
+] as const;
 
 function getConversationIcon(type: ConversationType) {
   if (type === "note") return Tags;
@@ -167,7 +179,16 @@ export function LifelogDashboard({
   displayTimeZone: string;
   renderedAt: string;
 }) {
-  const [activeTab, setActiveTab] = useState<ConversationFilterTab>("All");
+  const router = useRouter();
+  const pathname = usePathname();
+  const [isNavigating, startTransition] = useTransition();
+  const [backfillState, backfillAction, isSyncPending] = useActionState(
+    backfillFieldy as (
+      state: BackfillActionState,
+      formData: FormData,
+    ) => Promise<BackfillActionState>,
+    initialBackfillActionState,
+  );
   const [chatInput, setChatInput] = useState("");
   const [recallAnswer, setRecallAnswer] = useState(
     data.conversations.length > 0
@@ -194,9 +215,52 @@ export function LifelogDashboard({
     [currentDate, displayTimeZone],
   );
 
+  function buildQueryString(updates: Record<string, string | null>) {
+    const params = new URLSearchParams();
+    if (data.query.q) params.set("q", data.query.q);
+    if (data.query.type !== "all") params.set("type", data.query.type);
+    if (data.query.range !== "all") params.set("range", data.query.range);
+    if (data.query.page > 1) params.set("page", String(data.query.page));
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (
+        !value ||
+        ((key === "type" || key === "range") && value === "all") ||
+        (key === "page" && value === "1")
+      ) {
+        params.delete(key);
+      } else {
+        params.set(key, value);
+      }
+    }
+
+    const queryString = params.toString();
+    return queryString ? `?${queryString}` : "";
+  }
+
+  function navigateWith(updates: Record<string, string | null>) {
+    startTransition(() => {
+      router.push(`${pathname}${buildQueryString(updates)}`);
+    });
+  }
+
+  function handleSearchSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const q = String(formData.get("q") ?? "").trim();
+    navigateWith({ q: q || null, page: "1" });
+  }
+
+  const currentFromQuery = buildQueryString({});
+
   const conversations = useMemo<Conversation[]>(() => {
     return data.conversations.map((conversation) => ({
       id: conversation.id,
+      href: `/conversations/${conversation.id}${
+        currentFromQuery
+          ? `?from=${encodeURIComponent(currentFromQuery)}`
+          : ""
+      }`,
       time: formatTime(conversation.startedAt, displayTimeZone),
       title: conversation.title,
       people:
@@ -209,7 +273,13 @@ export function LifelogDashboard({
       type: conversation.type,
       day: getConversationDay(conversation.startedAt, currentDate, displayTimeZone),
     }));
-  }, [currentDate, data.conversations, displayTimeZone, taskCountsByConversationId]);
+  }, [
+    currentFromQuery,
+    currentDate,
+    data.conversations,
+    displayTimeZone,
+    taskCountsByConversationId,
+  ]);
 
   const tasks = useMemo<Task[]>(() => {
     return data.tasks.map((task) => ({
@@ -223,12 +293,13 @@ export function LifelogDashboard({
     }));
   }, [conversationTitleById, data.tasks, displayTimeZone]);
 
-  const visibleConversations = useMemo(() => {
-    return filterConversationsByTab(conversations, activeTab);
-  }, [activeTab, conversations]);
-
-  const hasImportedConversations = data.conversations.length > 0;
+  const visibleConversations = conversations;
+  const hasImportedConversations = data.importedConversationCount > 0;
   const hasFilteredConversations = visibleConversations.length > 0;
+  const hasActiveFilters =
+    data.query.q.length > 0 ||
+    data.query.type !== "all" ||
+    data.query.range !== "all";
   const openTaskCount = data.openTaskCount;
   const { todayConversationCount, keywordRows, keywordCount, keywordMax } = useMemo(() => {
     const keywordCounts = data.conversations
@@ -250,14 +321,14 @@ export function LifelogDashboard({
       keywordMax: Math.max(...keywordRowsValue.map(([, count]) => count), 1),
     };
   }, [conversations, data.conversations]);
-  const syncStatus = data.lastSync?.status ?? "Not synced";
+  const syncStatus = data.lastSyncDisplay?.status ?? "Not synced";
   const SyncStatusIcon =
-    data.lastSync?.status === "succeeded"
+    data.lastSyncDisplay?.status === "succeeded"
       ? Check
-      : data.lastSync?.status === "failed"
+      : data.lastSyncDisplay?.status === "failed"
         ? AlertCircle
         : RefreshCcw;
-  const syncStatusClassName = `sync-status sync-status-${data.lastSync?.status ?? "idle"}`;
+  const syncStatusClassName = `sync-status sync-status-${data.lastSyncDisplay?.status ?? "idle"}`;
 
   function handleRecallSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -303,22 +374,55 @@ export function LifelogDashboard({
           })}
         </nav>
 
-        <section className="device-card" aria-label="Fieldy device status">
-          <span className="device-render" aria-hidden="true" />
+        <section className="sync-activity-panel" aria-label="Fieldy sync activity">
           <div>
-            <p>Fieldy Device</p>
-            <strong>
-              100% <BatteryFull aria-hidden="true" size={18} />
+            <p>Fieldy Sync</p>
+            <strong className={syncStatusClassName}>
+              <SyncStatusIcon aria-hidden="true" size={18} />
+              <span>{data.lastSyncDisplay?.status ?? "Not synced"}</span>
             </strong>
           </div>
+          <dl>
+            <div>
+              <dt>Source</dt>
+              <dd>{data.lastSyncDisplay?.source ?? "None"}</dd>
+            </div>
+            <div>
+              <dt>Imported</dt>
+              <dd>{data.lastSyncDisplay?.importedCount ?? 0}</dd>
+            </div>
+            <div>
+              <dt>Finished</dt>
+              <dd>
+                {data.lastSyncDisplay?.finishedAt
+                  ? formatDate(
+                      new Date(data.lastSyncDisplay.finishedAt),
+                      displayTimeZone,
+                    )
+                  : "Never"}
+              </dd>
+            </div>
+          </dl>
+          {data.lastSyncDisplay?.displayError ? (
+            <p className="sync-error">{data.lastSyncDisplay.displayError}</p>
+          ) : null}
+          {backfillState.message ? (
+            <p className={`sync-action-message sync-action-${backfillState.status}`}>
+              {backfillState.message}
+            </p>
+          ) : null}
+          <form action={backfillAction}>
+            <button
+              aria-label={isSyncPending ? "Syncing Fieldy" : "Sync Fieldy"}
+              className="sync-button"
+              disabled={isSyncPending}
+              type="submit"
+            >
+              <RefreshCcw aria-hidden="true" size={18} />
+              <span>{isSyncPending ? "Syncing..." : "Sync Fieldy"}</span>
+            </button>
+          </form>
         </section>
-
-              <form action={backfillFieldy}>
-          <button className="sync-button" type="submit">
-            <RefreshCcw aria-hidden="true" size={18} />
-            Sync Fieldy
-          </button>
-        </form>
 
         <button className="profile-button" type="button">
           <span className="avatar">JS</span>
@@ -329,22 +433,31 @@ export function LifelogDashboard({
 
       <section className="workspace">
         <header className="topbar">
-          <label className="search-command">
+          <form className="search-command" onSubmit={handleSearchSubmit}>
             <Search aria-hidden="true" size={20} />
             <input
               aria-label="Search conversations"
-              placeholder="Search conversations, people, topics, tasks..."
+              defaultValue={data.query.q}
+              key={data.query.q}
+              name="q"
+              placeholder="Search conversations, topics, tasks..."
               type="search"
             />
-            <span>
-              <Command aria-hidden="true" size={14} /> K
-            </span>
-          </label>
-          <button className="date-button" type="button">
-            <CalendarDays aria-hidden="true" size={19} />
-            {formatDate(currentDate, displayTimeZone)}
-            <ChevronDown aria-hidden="true" size={16} />
-          </button>
+            <button disabled={isNavigating} type="submit">Search</button>
+          </form>
+          <div className="range-control" aria-label="Date range">
+            {ranges.map((range) => (
+              <button
+                aria-pressed={data.query.range === range.value}
+                className={data.query.range === range.value ? "is-active" : ""}
+                key={range.value}
+                onClick={() => navigateWith({ range: range.value, page: "1" })}
+                type="button"
+              >
+                {range.label}
+              </button>
+            ))}
+          </div>
         </header>
 
         <div className="content-grid">
@@ -373,10 +486,10 @@ export function LifelogDashboard({
                   {syncStatus}
                 </strong>
                 <span>
-                  {data.lastSync?.error_message ??
-                    (data.lastSync?.finished_at
+                  {data.lastSyncDisplay?.displayError ??
+                    (data.lastSyncDisplay?.finishedAt
                       ? `Last sync ${formatDate(
-                          new Date(data.lastSync.finished_at),
+                          new Date(data.lastSyncDisplay.finishedAt),
                           displayTimeZone,
                         )}`
                       : "Run a sync to import Fieldy data")}
@@ -389,33 +502,37 @@ export function LifelogDashboard({
                 <div className="tab-list" role="group" aria-label="Timeline filters">
                   {tabs.map((tab) => (
                     <button
-                      aria-pressed={activeTab === tab}
-                      className={activeTab === tab ? "tab is-active" : "tab"}
-                      key={tab}
-                      onClick={() => setActiveTab(tab)}
+                      aria-pressed={data.query.type === tab.value}
+                      className={data.query.type === tab.value ? "tab is-active" : "tab"}
+                      key={tab.value}
+                      onClick={() => navigateWith({ type: tab.value, page: "1" })}
                       type="button"
                     >
-                      {tab}
+                      {tab.label}
                     </button>
                   ))}
                 </div>
-                <button className="range-button" type="button">
-                  All time
-                  <ChevronDown aria-hidden="true" size={15} />
-                </button>
               </div>
 
-              {data.conversations.length === 0 ? (
+              {!hasImportedConversations ? (
                 <section className="empty-state">
                   <h2>No Fieldy conversations imported yet</h2>
                   <p>Run a manual sync to backfill your recent Fieldy history.</p>
                 </section>
               ) : null}
 
-              {hasImportedConversations && !hasFilteredConversations ? (
+              {hasImportedConversations && hasActiveFilters && !hasFilteredConversations ? (
                 <section className="empty-state">
-                  <h2>No items in this view yet</h2>
-                  <p>Try another timeline filter to see imported Fieldy conversations.</p>
+                  <h2>No matching conversations</h2>
+                  <p>Clear the search or choose another filter.</p>
+                  <button
+                    onClick={() =>
+                      navigateWith({ q: null, type: "all", range: "all", page: "1" })
+                    }
+                    type="button"
+                  >
+                    Clear filters
+                  </button>
                 </section>
               ) : null}
 
@@ -434,11 +551,16 @@ export function LifelogDashboard({
 
               <footer className="timeline-footer">
                 <span>
-                  Showing {visibleConversations.length} of {data.conversations.length} conversations
+                  Showing {data.shownConversationCount} of {data.totalConversationCount} conversations
                 </span>
-                <button type="button">
-                  Load more <ChevronDown aria-hidden="true" size={15} />
-                </button>
+                {data.hasMoreConversations ? (
+                  <button
+                    onClick={() => navigateWith({ page: String(data.query.page + 1) })}
+                    type="button"
+                  >
+                    Load more <ChevronDown aria-hidden="true" size={15} />
+                  </button>
+                ) : null}
               </footer>
             </div>
           </section>
@@ -545,30 +667,29 @@ function TimelineGroup({
         const Icon = getConversationIcon(conversation.type);
         return (
           <article className="conversation-row" key={conversation.id}>
-            <div className="conversation-time">
-              <span aria-hidden="true" />
-              <time>{conversation.time}</time>
-            </div>
-            <div className={`conversation-icon type-${conversation.type}`}>
-              <Icon aria-hidden="true" size={19} strokeWidth={1.8} />
-            </div>
-            <div className="conversation-copy">
-              <h3>{conversation.title}</h3>
-              <p>{conversation.people}</p>
-              <small>{conversation.summary}</small>
-            </div>
-            {conversation.tasks > 0 ? (
-              <span className="task-count">{conversation.tasks} tasks</span>
-            ) : (
-              <span className="task-count is-empty">No tasks</span>
-            )}
-            <span className="duration">
-              <Clock3 aria-hidden="true" size={15} />
-              {conversation.duration}
-            </span>
-            <button aria-label={`More actions for ${conversation.title}`} type="button">
-              <MoreVertical aria-hidden="true" size={18} />
-            </button>
+            <Link className="conversation-link" href={conversation.href}>
+              <div className="conversation-time">
+                <span aria-hidden="true" />
+                <time>{conversation.time}</time>
+              </div>
+              <div className={`conversation-icon type-${conversation.type}`}>
+                <Icon aria-hidden="true" size={19} strokeWidth={1.8} />
+              </div>
+              <div className="conversation-copy">
+                <h3>{conversation.title}</h3>
+                <p>{conversation.people}</p>
+                <small>{conversation.summary}</small>
+              </div>
+              {conversation.tasks > 0 ? (
+                <span className="task-count">{conversation.tasks} tasks</span>
+              ) : (
+                <span className="task-count is-empty">No tasks</span>
+              )}
+              <span className="duration">
+                <Clock3 aria-hidden="true" size={15} />
+                {conversation.duration}
+              </span>
+            </Link>
           </article>
         );
       })}
