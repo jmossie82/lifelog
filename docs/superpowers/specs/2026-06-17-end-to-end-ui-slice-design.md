@@ -44,20 +44,20 @@ The core user loop is: sign in, sync, search, filter, open a conversation, read 
 
 Use a URL-driven, server-rendered dashboard plus a dedicated detail route.
 
-`app/page.tsx` will accept `searchParams`, authenticate the owner as it does today, normalize supported params, and call an expanded dashboard data helper. The helper owns Supabase query construction and mapping. Server-side reads continue to use the per-request Supabase SSR client so RLS remains the read boundary.
+`app/page.tsx` will accept Next 16 async search params, authenticate the owner as it does today, normalize supported params, and call an expanded dashboard data helper. Use an explicit `{ searchParams: Promise<Record<string, string | string[] | undefined>> }` prop shape, await `searchParams` once in the server page, normalize through a pure helper, and pass only normalized state to the client dashboard. The helper owns Supabase query construction and mapping. Server-side reads continue to use the per-request Supabase SSR client so RLS remains the read boundary.
 
 `components/lifelog-dashboard.tsx` remains a client component for interactive controls and local pending states. It receives the canonical result set from the server, initializes controls from normalized search state, updates URL params when the user submits search or changes filters, and renders links to conversation detail pages.
 
-Add `app/conversations/[id]/page.tsx` for the dedicated conversation page. This route authenticates the owner, reads one conversation by internal UUID, loads full transcript rows ordered by `started_at`, loads linked tasks, and renders a server-provided detail model. Put query and mapping logic in `lib/lifelog/conversation-detail.ts` so the page stays thin and the behavior is easy to test.
+Add `app/conversations/[id]/page.tsx` for the dedicated conversation page. This route uses Next 16 async params, authenticates the owner, validates the internal UUID, reads one conversation through the authenticated server Supabase client, loads full transcript rows ordered by `started_at`, loads linked tasks, and renders a server-provided detail model. Use an explicit `{ params: Promise<{ id: string }>; searchParams: Promise<{ from?: string }> }` prop shape. Put query and mapping logic in `lib/lifelog/conversation-detail.ts` so the page stays thin and the behavior is easy to test.
 
-Keep `backfillFieldy` as the sync mutation. Adapt its UI integration so the sync form can show pending, success, and failure state in the sync activity panel. The action should still revalidate `/` after completion.
+Keep `backfillFieldy` as the sync mutation, but give it an explicit action-state contract for the UI. Define `BackfillActionState` as `{ status: "idle" | "success" | "error"; message: string; importedCount: number | null }`. Adapt the server action to the `useActionState` signature, `backfillFieldy(prevState, formData): Promise<BackfillActionState>`, while preserving the existing owner authorization and `revalidatePath("/")` behavior. The dashboard can still use the latest persisted `sync_runs` row as the durable source of last-run truth.
 
 ## Dashboard URL Params
 
 Supported dashboard params:
 
 - `q`: optional search string. Trim whitespace and ignore empty values.
-- `type`: optional conversation type filter. Supported values map to the existing tabs: `all`, `conversation`, `note`, `task`, `mention`.
+- `type`: optional conversation type filter. Supported values map to the existing tabs: `all`, `conversation`, `note`, `task`, `mention`. Since there is no `conversations.type` column, implementation must filter on `fieldy_metadata->>type` for non-default Fieldy types. `type=conversation` must include rows whose metadata type is absent, null, unknown, or explicitly `conversation`, matching the current mapper fallback.
 - `range`: optional date filter. Start with `all`, `today`, and `week`, calculated in `LIFELOG_DISPLAY_TIME_ZONE`.
 - `page`: optional positive integer for URL-driven pagination.
 
@@ -68,7 +68,14 @@ Invalid params normalize to defaults:
 - `range`: `all`
 - `page`: `1`
 
-The UI should show the normalized state, not raw invalid params.
+Normalize and cap values on the server. The UI should show the normalized state, not raw invalid params.
+
+Date range semantics:
+
+- `today`: conversations with `started_at` on the current display-time-zone day.
+- `week`: rolling 7-day window ending at the current render time, calculated as UTC instants from `LIFELOG_DISPLAY_TIME_ZONE`.
+- `all`: no date filter.
+- Rows with null `started_at` are excluded from `today` and `week` filters and remain visible for `all`.
 
 ## Server-Backed Search
 
@@ -80,9 +87,26 @@ Search should query the persisted archive on the server. For this slice, use Sup
 - Keep result ordering by `started_at` descending, matching the current dashboard.
 - Preserve existing owner/RLS behavior by querying through the authenticated server client.
 
-The search implementation should escape or sanitize user input for PostgREST filter syntax so punctuation does not produce malformed filters.
+The search implementation must use a named helper, `buildConversationSearchFilter(q)`, rather than assembling the `.or()` string inline. The helper must:
+
+- Trim and cap `q` to a fixed maximum length.
+- Return no search filter for empty input.
+- Escape or encode PostgREST filter reserved characters so commas, periods, colons, parentheses, quotes, and backslashes cannot produce malformed filters.
+- Escape literal LIKE wildcards `%` and `_` unless a future design intentionally supports wildcard search.
+- Have tests for empty strings, very long input, commas, periods, parentheses, quotes, backslashes, `%`, `_`, and operator-looking input.
+
+Search query clauses, type filters, range filters, ordering, and pagination must all be applied in the Supabase query. Do not fetch a limited default result set and then filter it client-side.
 
 Pagination should operate on the searched result set, not on the pre-filtered default list.
+
+Pagination rules:
+
+- Use a fixed `DASHBOARD_PAGE_SIZE` of 25.
+- Treat `page` as cumulative load-more depth, not page replacement. `page=1` renders rows 0-24, `page=2` renders rows 0-49, and so on.
+- Cap `page` to a fixed maximum to prevent unbounded ranges.
+- Query with `.select(columns, { count: "exact" })` and `.range(0, page * DASHBOARD_PAGE_SIZE - 1)`.
+- Order before range with `started_at desc nulls last`, plus a stable `id` tie-breaker.
+- Return `totalCount`, `shownCount`, and `hasMore` from the dashboard data helper.
 
 ## Sync Activity Panel
 
@@ -96,7 +120,7 @@ Replace the existing sidebar device card and standalone sync button with one cle
 - Finished time when available.
 - Safe error message when available.
 
-The panel must not render raw Fieldy payloads, transcripts, API keys, owner IDs, or sensitive identifiers.
+The panel must not render raw Fieldy payloads, transcripts, API keys, owner IDs, or sensitive identifiers. Add a mapper boundary for sync display data before it reaches the component. The mapper should expose only `source`, `status`, `importedCount`, `finishedAt`, and a sanitized, truncated display error. It should treat persisted `sync_runs.error_message` as untrusted display input even though current writers try to store safe messages.
 
 ## Dashboard Interactions
 
@@ -126,7 +150,14 @@ Use explicit search submission for this slice. Debounced search can be added lat
 
 If no transcript segments are stored, show an explicit empty transcript state. Since this slice is meant to implement full transcript rendering, do not silently substitute summary/content as the transcript happy path.
 
-If the conversation is missing or inaccessible under RLS, return `notFound()`.
+Detail route query behavior:
+
+- Invalid UUID params return `notFound()` without querying.
+- Fetch the conversation with the per-request authenticated server Supabase client, never the service-role/admin client.
+- Use `.eq("id", id).maybeSingle()`.
+- Return `notFound()` for no row or RLS invisibility.
+- Throw unexpected Supabase errors instead of hiding them as not-found.
+- Query `transcriptions` and `tasks` only after the conversation is authorized, filtering both by the authorized `conversation.id`.
 
 ## Error Handling And Empty States
 
@@ -147,10 +178,13 @@ Add focused tests for:
 - Dashboard data helper applying server-backed text search.
 - Dashboard data helper applying type/range filters and pagination.
 - Search query escaping or safe filter construction.
+- Search and filters applied before pagination, with no client-side post-filtering after a limited result set.
+- Bounded `.range()` math, `DASHBOARD_PAGE_SIZE`, page caps, `totalCount`, `shownCount`, and `hasMore`.
 - Dashboard source using URL-driven controls and links to `/conversations/[id]`.
 - Sync activity panel source rendering pending/success/failure states from action state and latest sync run data.
+- Sync display mapper redacting raw-looking API keys, owner UUIDs, Fieldy IDs, and transcript-like content from display errors.
 - Conversation detail mapper ordering transcript rows and mapping linked tasks.
-- Conversation detail route source using owner-authenticated server reads and `notFound()` for misses.
+- Conversation detail route source using owner-authenticated server reads, invalid UUID handling, `notFound()` for no row/RLS invisibility, and unexpected-error propagation.
 
 Continue running:
 
