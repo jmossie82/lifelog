@@ -26,3 +26,13 @@ test("dashboard memoizes imported conversation aggregates", () => {
   );
   assert.match(source, /\}, \[conversations, data\.conversations\]\)/);
 });
+
+test("dashboard uses deterministic timezone-aware dates for hydration", () => {
+  assert.match(source, /DISPLAY_TIME_ZONE = "America\/Chicago"/);
+  assert.match(source, /renderedAt/);
+  assert.match(source, /timeZone: DISPLAY_TIME_ZONE/);
+  assert.doesNotMatch(source, /const currentDate = new Date\(\);/);
+  assert.doesNotMatch(source, /toDateString\(\)/);
+  assert.doesNotMatch(source, /setDate\(/);
+  assert.doesNotMatch(source, /getDate\(/);
+});

@@ -20,5 +20,5 @@ export default async function Home() {
 
   const dashboardData = await getDashboardData(supabase);
 
-  return <LifelogDashboard data={dashboardData} />;
+  return <LifelogDashboard data={dashboardData} renderedAt={new Date().toISOString()} />;
 }

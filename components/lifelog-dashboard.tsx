@@ -64,6 +64,7 @@ const navItems = [
 ];
 
 const tabs = ["All", "Conversations", "Notes", "Tasks", "Mentions"] as const;
+const DISPLAY_TIME_ZONE = "America/Chicago";
 
 function getConversationIcon(type: ConversationType) {
   if (type === "note") return Tags;
@@ -78,6 +79,7 @@ function formatTime(value: string | null) {
   return new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
+    timeZone: DISPLAY_TIME_ZONE,
   }).format(new Date(value));
 }
 
@@ -86,6 +88,7 @@ function formatDate(value: Date) {
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone: DISPLAY_TIME_ZONE,
   }).format(value);
 }
 
@@ -95,6 +98,7 @@ function formatDueDate(value: string | null) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
+    timeZone: DISPLAY_TIME_ZONE,
   }).format(new Date(value));
 }
 
@@ -111,16 +115,50 @@ function formatDuration(startedAt: string | null, endedAt: string | null) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-function getConversationDay(startedAt: string | null): Conversation["day"] {
-  if (!startedAt) return "yesterday";
-
-  const today = new Date();
-  const startedDate = new Date(startedAt);
-
-  return today.toDateString() === startedDate.toDateString() ? "today" : "yesterday";
+function formatDateKey(value: Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: DISPLAY_TIME_ZONE,
+    year: "numeric",
+  }).format(value);
 }
 
-export function LifelogDashboard({ data }: { data: DashboardData }) {
+function getDisplayDateParts(value: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: DISPLAY_TIME_ZONE,
+    year: "numeric",
+  }).formatToParts(value);
+
+  return {
+    day: Number(parts.find((part) => part.type === "day")?.value),
+    month: Number(parts.find((part) => part.type === "month")?.value),
+    year: Number(parts.find((part) => part.type === "year")?.value),
+  };
+}
+
+function getPreviousDisplayDate(value: Date) {
+  const { day, month, year } = getDisplayDateParts(value);
+  return new Date(Date.UTC(year, month - 1, day - 1, 12));
+}
+
+function getConversationDay(startedAt: string | null, currentDate: Date): Conversation["day"] {
+  if (!startedAt) return "yesterday";
+
+  const startedDate = new Date(startedAt);
+
+  return formatDateKey(currentDate) === formatDateKey(startedDate) ? "today" : "yesterday";
+}
+
+export function LifelogDashboard({
+  data,
+  renderedAt,
+}: {
+  data: DashboardData;
+  renderedAt: string;
+}) {
   const [activeTab, setActiveTab] = useState<ConversationFilterTab>("All");
   const [chatInput, setChatInput] = useState("");
   const [recallAnswer, setRecallAnswer] = useState(
@@ -142,6 +180,9 @@ export function LifelogDashboard({ data }: { data: DashboardData }) {
     }, new Map<string, number>());
   }, [data.tasks]);
 
+  const currentDate = useMemo(() => new Date(renderedAt), [renderedAt]);
+  const yesterdayDate = useMemo(() => getPreviousDisplayDate(currentDate), [currentDate]);
+
   const conversations = useMemo<Conversation[]>(() => {
     return data.conversations.map((conversation) => ({
       id: conversation.id,
@@ -155,9 +196,9 @@ export function LifelogDashboard({ data }: { data: DashboardData }) {
       duration: formatDuration(conversation.startedAt, conversation.endedAt),
       tasks: taskCountsByConversationId.get(conversation.id) ?? 0,
       type: conversation.type,
-      day: getConversationDay(conversation.startedAt),
+      day: getConversationDay(conversation.startedAt, currentDate),
     }));
-  }, [data.conversations, taskCountsByConversationId]);
+  }, [currentDate, data.conversations, taskCountsByConversationId]);
 
   const tasks = useMemo<Task[]>(() => {
     return data.tasks.map((task) => ({
@@ -198,9 +239,6 @@ export function LifelogDashboard({ data }: { data: DashboardData }) {
       keywordMax: Math.max(...keywordRowsValue.map(([, count]) => count), 1),
     };
   }, [conversations, data.conversations]);
-  const currentDate = new Date();
-  const yesterdayDate = new Date(currentDate);
-  yesterdayDate.setDate(currentDate.getDate() - 1);
   const syncStatus = data.lastSync?.status ?? "Not synced";
   const SyncStatusIcon =
     data.lastSync?.status === "succeeded"
@@ -326,9 +364,7 @@ export function LifelogDashboard({ data }: { data: DashboardData }) {
                 <span>
                   {data.lastSync?.error_message ??
                     (data.lastSync?.finished_at
-                      ? `Last sync ${new Intl.DateTimeFormat("en-US").format(
-                          new Date(data.lastSync.finished_at),
-                        )}`
+                      ? `Last sync ${formatDate(new Date(data.lastSync.finished_at))}`
                       : "Run a sync to import Fieldy data")}
                 </span>
               </article>

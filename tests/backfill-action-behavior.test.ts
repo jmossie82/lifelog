@@ -165,20 +165,24 @@ test("signed-out and non-owner users are unauthorized without side effects", asy
   }
 });
 
-test("unbounded conversations fail before transcription fetch", async () => {
+test("unbounded conversations are imported without transcript fetch", async () => {
   const harness = createHarness({
     conversations: [{ id: "conversation-1", startTime: null, endTime: null }],
   });
 
-  assert.deepEqual(await harness.run(), {
-    ok: false,
-    error: "Fieldy backfill failed",
-  });
+  assert.deepEqual(await harness.run(), { ok: true, importedCount: 1 });
   assert.equal(harness.fetchedTranscriptionRanges.length, 0);
+  assert.deepEqual(harness.ingestCalls, [
+    {
+      conversation: { id: "conversation-1", startTime: null, endTime: null },
+      transcriptions: [],
+      tasks: [],
+    },
+  ]);
   assert.deepEqual(harness.syncRunStore.updates.at(-1), {
-    status: "failed",
-    imported_count: 0,
-    error_message: "Fieldy backfill encountered an unbounded conversation",
+    status: "succeeded",
+    imported_count: 1,
+    error_message: null,
     finished_at: "2026-06-16T00:00:00.000Z",
   });
 });
@@ -291,7 +295,7 @@ test("tasks are indexed once by memory id for each conversation", async () => {
 test("dashboard is revalidated on success and recorded failure", async () => {
   const success = createHarness();
   const failure = createHarness({
-    conversations: [{ id: "conversation-1", startTime: null, endTime: null }],
+    ingestErrors: [new Error("raw transcript failure")],
   });
 
   await success.run();
