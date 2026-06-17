@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   AlertCircle,
   BarChart3,
@@ -34,6 +35,7 @@ type ConversationType = ConversationFilterType;
 
 type Conversation = {
   id: string;
+  href: string;
   time: string;
   title: string;
   people: string;
@@ -112,6 +114,19 @@ function formatDuration(startedAt: string | null, endedAt: string | null) {
   const seconds = totalSeconds % 60;
 
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function buildCurrentDashboardQuery(query: DashboardData["query"]) {
+  const params = new URLSearchParams();
+  const q = query.q.trim();
+
+  if (q) params.set("q", q);
+  if (query.type !== "all") params.set("type", query.type);
+  if (query.range !== "all") params.set("range", query.range);
+  if (query.page !== 1) params.set("page", String(query.page));
+
+  const serializedQuery = params.toString();
+  return serializedQuery ? `?${serializedQuery}` : "";
 }
 
 function formatDateKey(value: Date, displayTimeZone: string) {
@@ -193,10 +208,19 @@ export function LifelogDashboard({
     () => getPreviousDisplayDate(currentDate, displayTimeZone),
     [currentDate, displayTimeZone],
   );
+  const currentDashboardQuery = useMemo(
+    () => buildCurrentDashboardQuery(data.query),
+    [data.query],
+  );
 
   const conversations = useMemo<Conversation[]>(() => {
     return data.conversations.map((conversation) => ({
       id: conversation.id,
+      href: `/conversations/${conversation.id}${
+        currentDashboardQuery
+          ? `?from=${encodeURIComponent(currentDashboardQuery)}`
+          : ""
+      }`,
       time: formatTime(conversation.startedAt, displayTimeZone),
       title: conversation.title,
       people:
@@ -209,7 +233,13 @@ export function LifelogDashboard({
       type: conversation.type,
       day: getConversationDay(conversation.startedAt, currentDate, displayTimeZone),
     }));
-  }, [currentDate, data.conversations, displayTimeZone, taskCountsByConversationId]);
+  }, [
+    currentDashboardQuery,
+    currentDate,
+    data.conversations,
+    displayTimeZone,
+    taskCountsByConversationId,
+  ]);
 
   const tasks = useMemo<Task[]>(() => {
     return data.tasks.map((task) => ({
@@ -545,27 +575,29 @@ function TimelineGroup({
         const Icon = getConversationIcon(conversation.type);
         return (
           <article className="conversation-row" key={conversation.id}>
-            <div className="conversation-time">
-              <span aria-hidden="true" />
-              <time>{conversation.time}</time>
-            </div>
-            <div className={`conversation-icon type-${conversation.type}`}>
-              <Icon aria-hidden="true" size={19} strokeWidth={1.8} />
-            </div>
-            <div className="conversation-copy">
-              <h3>{conversation.title}</h3>
-              <p>{conversation.people}</p>
-              <small>{conversation.summary}</small>
-            </div>
-            {conversation.tasks > 0 ? (
-              <span className="task-count">{conversation.tasks} tasks</span>
-            ) : (
-              <span className="task-count is-empty">No tasks</span>
-            )}
-            <span className="duration">
-              <Clock3 aria-hidden="true" size={15} />
-              {conversation.duration}
-            </span>
+            <Link className="conversation-link" href={conversation.href}>
+              <div className="conversation-time">
+                <span aria-hidden="true" />
+                <time>{conversation.time}</time>
+              </div>
+              <div className={`conversation-icon type-${conversation.type}`}>
+                <Icon aria-hidden="true" size={19} strokeWidth={1.8} />
+              </div>
+              <div className="conversation-copy">
+                <h3>{conversation.title}</h3>
+                <p>{conversation.people}</p>
+                <small>{conversation.summary}</small>
+              </div>
+              {conversation.tasks > 0 ? (
+                <span className="task-count">{conversation.tasks} tasks</span>
+              ) : (
+                <span className="task-count is-empty">No tasks</span>
+              )}
+              <span className="duration">
+                <Clock3 aria-hidden="true" size={15} />
+                {conversation.duration}
+              </span>
+            </Link>
             <button aria-label={`More actions for ${conversation.title}`} type="button">
               <MoreVertical aria-hidden="true" size={18} />
             </button>

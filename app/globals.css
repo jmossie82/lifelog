@@ -447,6 +447,12 @@ button {
   border-bottom: 1px solid var(--border);
 }
 
+.conversation-link {
+  display: contents;
+  color: inherit;
+  text-decoration: none;
+}
+
 .conversation-time {
   display: flex;
   gap: 10px;
@@ -1087,4 +1093,11 @@ button {
   margin: 6px 0 0;
   color: #26322f;
   line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .transcript-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
 }

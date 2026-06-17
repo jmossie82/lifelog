@@ -41,3 +41,9 @@ test("dashboard uses safe mapped sync errors", () => {
   assert.match(source, /data\.lastSyncDisplay\?\.displayError/);
   assert.doesNotMatch(source, /data\.lastSync\?\.error_message/);
 });
+
+test("dashboard links conversation rows to detail routes with current query", () => {
+  assert.match(source, /href=\{conversation\.href\}/);
+  assert.match(source, /\/conversations\/\$\{conversation\.id\}/);
+  assert.match(source, /from/);
+});

@@ -18,7 +18,7 @@ test("conversation detail route uses async params and authenticated reads", () =
 
 test("conversation detail route validates UUIDs and uses notFound for misses", () => {
   assert.match(source, /isUuid/);
-  assert.match(source, /readFirstSearchParam/);
+  assert.match(source, /buildConversationBackHref/);
   assert.match(source, /notFound\(\)/);
   assert.match(source, /getConversationDetail/);
 });

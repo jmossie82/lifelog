@@ -6,6 +6,7 @@ import {
   isUuid,
   type ConversationDetail,
 } from "@/lib/lifelog/conversation-detail";
+import { buildConversationBackHref } from "@/lib/lifelog/conversation-detail-route";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function formatDateTime(value: string | null, displayTimeZone: string) {
@@ -27,27 +28,6 @@ function formatDuration(detail: ConversationDetail) {
 
   const minutes = Math.round(durationMs / 60_000);
   return `${minutes} min`;
-}
-
-function readFirstSearchParam(value: string | string[] | undefined) {
-  return Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
-}
-
-function buildBackHref(params: Record<string, string | string[] | undefined>) {
-  const from = readFirstSearchParam(params.from);
-  if (!from.startsWith("?")) return "/";
-
-  const incoming = new URLSearchParams(from);
-  const outgoing = new URLSearchParams();
-  for (const key of ["q", "type", "range", "page"]) {
-    const value = incoming.get(key);
-    if (value) {
-      outgoing.set(key, value);
-    }
-  }
-
-  const query = outgoing.toString();
-  return query ? `/?${query}` : "/";
 }
 
 export default async function ConversationDetailPage({
@@ -87,7 +67,10 @@ export default async function ConversationDetailPage({
   return (
     <main className="detail-shell">
       <div className="detail-topbar">
-        <Link className="detail-back-link" href={buildBackHref(detailSearchParams)}>
+        <Link
+          className="detail-back-link"
+          href={buildConversationBackHref(detailSearchParams)}
+        >
           Back to timeline
         </Link>
       </div>
