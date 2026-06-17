@@ -28,6 +28,7 @@ test("createOpenAiEmbeddingClient posts sanitized embedding requests", async () 
   assert.deepEqual(await client.embedText("hello\nworld"), validEmbedding);
   assert.equal(requests[0]?.url, "https://api.openai.com/v1/embeddings");
   assert.equal(requests[0]?.init.method, "POST");
+  assert.ok(requests[0]?.init.signal instanceof AbortSignal);
   assert.equal(
     (requests[0]?.init.headers as Record<string, string>).Authorization,
     "Bearer sk-test",
@@ -36,6 +37,52 @@ test("createOpenAiEmbeddingClient posts sanitized embedding requests", async () 
     input: "hello world",
     model: "text-embedding-3-small",
   });
+});
+
+test("createOpenAiEmbeddingClient times out stalled embedding requests", async () => {
+  const client = createOpenAiEmbeddingClient({
+    apiKey: "sk-secret-value",
+    embeddingModel: "text-embedding-3-small",
+    timeoutMs: 1,
+    fetch: async (_url, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        signal?.addEventListener("abort", () => {
+          reject(Object.assign(new Error("request aborted"), { name: "AbortError" }));
+        });
+      }),
+  });
+
+  await assert.rejects(
+    () => client.embedText("hello"),
+    /OpenAI embedding request timed out/,
+  );
+});
+
+test("createOpenAiEmbeddingClient times out stalled response bodies", async () => {
+  const client = createOpenAiEmbeddingClient({
+    apiKey: "sk-secret-value",
+    embeddingModel: "text-embedding-3-small",
+    timeoutMs: 1,
+    fetch: async (_url, init) => {
+      const signal = init?.signal;
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            signal?.addEventListener("abort", () => {
+              controller.error(Object.assign(new Error("request aborted"), { name: "AbortError" }));
+            });
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    },
+  });
+
+  await assert.rejects(
+    () => client.embedText("hello"),
+    /OpenAI embedding request timed out/,
+  );
 });
 
 test("createOpenAiEmbeddingClient rejects blank input before fetch", async () => {

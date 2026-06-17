@@ -7,15 +7,20 @@ type EmbeddingResponse = {
 };
 
 export const OPENAI_EMBEDDING_DIMENSIONS = 1536;
+export const OPENAI_EMBEDDING_TIMEOUT_MS = 30_000;
+
+class OpenAiEmbeddingStatusError extends Error {}
 
 export function createOpenAiEmbeddingClient({
   apiKey,
   embeddingModel,
   fetch: fetchImpl = fetch,
+  timeoutMs = OPENAI_EMBEDDING_TIMEOUT_MS,
 }: {
   apiKey: string;
   embeddingModel: string;
   fetch?: FetchLike;
+  timeoutMs?: number;
 }) {
   async function embedText(input: string) {
     const normalizedInput = input.replace(/\s+/g, " ").trim();
@@ -23,23 +28,45 @@ export function createOpenAiEmbeddingClient({
       throw new Error("Embedding input must not be empty");
     }
 
-    const response = await fetchImpl("https://api.openai.com/v1/embeddings", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        input: normalizedInput,
-        model: embeddingModel,
-      }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let payload: EmbeddingResponse;
 
-    if (!response.ok) {
-      throw new Error(`OpenAI embedding request failed with ${response.status}`);
+    try {
+      const response = await fetchImpl("https://api.openai.com/v1/embeddings", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          input: normalizedInput,
+          model: embeddingModel,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new OpenAiEmbeddingStatusError(
+          `OpenAI embedding request failed with ${response.status}`,
+        );
+      }
+
+      payload = (await response.json()) as EmbeddingResponse;
+    } catch (error) {
+      if (error instanceof OpenAiEmbeddingStatusError) {
+        throw error;
+      }
+
+      if (controller.signal.aborted || isAbortError(error)) {
+        throw new Error("OpenAI embedding request timed out");
+      }
+
+      throw new Error("OpenAI embedding request failed");
+    } finally {
+      clearTimeout(timeout);
     }
 
-    const payload = (await response.json()) as EmbeddingResponse;
     const embedding = payload.data?.[0]?.embedding;
 
     if (
@@ -54,4 +81,8 @@ export function createOpenAiEmbeddingClient({
   }
 
   return { embedText };
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
 }
