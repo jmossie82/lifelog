@@ -6,6 +6,16 @@ function readRequiredEnv(name: string) {
   return value;
 }
 
+export const DEFAULT_DISPLAY_TIME_ZONE = "America/Chicago";
+
+function assertValidTimeZone(value: string) {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+  } catch {
+    throw new Error("LIFELOG_DISPLAY_TIME_ZONE must be a valid IANA time zone");
+  }
+}
+
 export function getClientEnv() {
   return {
     supabaseUrl: readRequiredEnv("NEXT_PUBLIC_SUPABASE_URL"),
@@ -45,4 +55,10 @@ export function getFieldyEnv() {
 
 export function getOwnerUserId() {
   return readRequiredEnv("LIFELOG_OWNER_USER_ID");
+}
+
+export function getDisplayTimeZone() {
+  const displayTimeZone = process.env.LIFELOG_DISPLAY_TIME_ZONE ?? DEFAULT_DISPLAY_TIME_ZONE;
+  assertValidTimeZone(displayTimeZone);
+  return displayTimeZone;
 }

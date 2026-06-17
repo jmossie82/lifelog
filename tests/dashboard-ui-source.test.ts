@@ -28,9 +28,9 @@ test("dashboard memoizes imported conversation aggregates", () => {
 });
 
 test("dashboard uses deterministic timezone-aware dates for hydration", () => {
-  assert.match(source, /DISPLAY_TIME_ZONE = "America\/Chicago"/);
+  assert.match(source, /displayTimeZone/);
   assert.match(source, /renderedAt/);
-  assert.match(source, /timeZone: DISPLAY_TIME_ZONE/);
+  assert.match(source, /timeZone: displayTimeZone/);
   assert.doesNotMatch(source, /const currentDate = new Date\(\);/);
   assert.doesNotMatch(source, /toDateString\(\)/);
   assert.doesNotMatch(source, /setDate\(/);
