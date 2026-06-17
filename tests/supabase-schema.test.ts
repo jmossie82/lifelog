@@ -38,6 +38,18 @@ test("migration creates a private configured-owner guard", () => {
   assert.match(migration, /set search_path = ''/);
   assert.match(migration, /\(select auth\.uid\(\)\) = row_user_id/);
   assert.match(migration, /from public\.lifelog_owner_config/);
+  assert.match(
+    normalizedMigration,
+    /revoke all on function public\.is_lifelog_owner\(uuid\) from public;/,
+  );
+  assert.match(
+    normalizedMigration,
+    /grant execute on function public\.is_lifelog_owner\(uuid\) to authenticated;/,
+  );
+  assert.doesNotMatch(
+    normalizedMigration,
+    /grant execute on function public\.is_lifelog_owner\(uuid\) to public;/,
+  );
   assert.match(migration, /alter table public\.lifelog_owner_config enable row level security/);
   assert.doesNotMatch(migration, /create policy "[^"]+"[\s\S]*on public\.lifelog_owner_config/);
 });

@@ -15,6 +15,12 @@ type Row<TColumns> = {
 export type Database = {
   public: {
     Tables: {
+      lifelog_owner_config: Row<{
+        id: number;
+        user_id: string;
+        created_at: string;
+        updated_at: string;
+      }>;
       conversations: Row<{
         id: string;
         user_id: string;
@@ -65,7 +71,14 @@ export type Database = {
       }>;
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      is_lifelog_owner: {
+        Args: {
+          row_user_id: string;
+        };
+        Returns: boolean;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

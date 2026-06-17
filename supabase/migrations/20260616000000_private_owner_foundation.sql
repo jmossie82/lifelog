@@ -96,6 +96,9 @@ as $$
     );
 $$;
 
+revoke all on function public.is_lifelog_owner(uuid) from public;
+grant execute on function public.is_lifelog_owner(uuid) to authenticated;
+
 create index conversations_user_started_at_idx
   on public.conversations (user_id, started_at desc nulls last);
 
