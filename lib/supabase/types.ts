@@ -10,6 +10,7 @@ type Row<TColumns> = {
   Row: TColumns;
   Insert: Partial<TColumns>;
   Update: Partial<TColumns>;
+  Relationships: [];
 };
 
 export type Database = {
@@ -85,7 +86,6 @@ export type Database = {
       };
       match_conversations: {
         Args: {
-          [key: string]: unknown;
           query_embedding: number[];
           match_count?: number;
           match_threshold?: number;

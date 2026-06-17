@@ -1,3 +1,6 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+import type { Database } from "@/lib/supabase/types";
 import {
   CONVERSATION_EMBEDDING_INPUT_VERSION,
   buildConversationEmbeddingInput,
@@ -36,6 +39,7 @@ export type UpdateResult = {
 export type SelectQuery<TRow> = {
   select(columns: string): SelectQuery<TRow>;
   eq(column: string, value: unknown): SelectQuery<TRow>;
+  in(column: string, values: unknown[]): SelectQuery<TRow>;
   order(
     column: string,
     options: { ascending: boolean; nullsFirst: boolean },
@@ -54,10 +58,7 @@ export type UpdateQuery = {
   };
 };
 
-export type ConversationEmbeddingSupabase = {
-  from(table: "conversations"): SelectQuery<ConversationEmbeddingRow> & UpdateQuery;
-  from(table: "transcriptions"): SelectQuery<TranscriptionEmbeddingRow>;
-};
+export type ConversationEmbeddingSupabase = SupabaseClient<Database>;
 
 export async function embedMissingConversations({
   supabase,
@@ -86,19 +87,14 @@ export async function embedMissingConversations({
 
   let embeddedCount = 0;
   let skippedCount = 0;
+  const conversationRows = conversations ?? [];
+  const transcriptionsByConversationId = await fetchTranscriptionsByConversationId({
+    supabase,
+    ownerUserId,
+    conversationIds: conversationRows.map((conversation) => conversation.id),
+  });
 
-  for (const conversation of conversations ?? []) {
-    const { data: transcriptions, error: transcriptionsError } = await supabase
-      .from("transcriptions")
-      .select("id, user_id, conversation_id, speaker_label, text, started_at")
-      .eq("conversation_id", conversation.id)
-      .eq("user_id", ownerUserId)
-      .order("started_at", { ascending: true, nullsFirst: false });
-
-    if (transcriptionsError) {
-      throw transcriptionsError;
-    }
-
+  for (const conversation of conversationRows) {
     const input = buildConversationEmbeddingInput({
       id: conversation.id,
       fieldyId: conversation.fieldy_id,
@@ -106,11 +102,13 @@ export async function embedMissingConversations({
       summary: conversation.summary ?? "",
       content: conversation.content,
       keywords: conversation.keywords ?? [],
-      transcript: (transcriptions ?? []).map((transcription) => ({
-        speakerLabel: transcription.speaker_label,
-        text: transcription.text,
-        startedAt: transcription.started_at,
-      })),
+      transcript: (transcriptionsByConversationId.get(conversation.id) ?? []).map(
+        (transcription) => ({
+          speakerLabel: transcription.speaker_label,
+          text: transcription.text,
+          startedAt: transcription.started_at,
+        }),
+      ),
     });
 
     if (!input) {
@@ -149,4 +147,38 @@ export async function embedMissingConversations({
   }
 
   return { embeddedCount, skippedCount };
+}
+
+async function fetchTranscriptionsByConversationId({
+  supabase,
+  ownerUserId,
+  conversationIds,
+}: {
+  supabase: ConversationEmbeddingSupabase;
+  ownerUserId: string;
+  conversationIds: string[];
+}) {
+  const transcriptionsByConversationId = new Map<string, TranscriptionEmbeddingRow[]>();
+  if (conversationIds.length === 0) {
+    return transcriptionsByConversationId;
+  }
+
+  const { data, error } = await supabase
+    .from("transcriptions")
+    .select("id, user_id, conversation_id, speaker_label, text, started_at")
+    .eq("user_id", ownerUserId)
+    .in("conversation_id", conversationIds)
+    .order("started_at", { ascending: true, nullsFirst: false });
+
+  if (error) {
+    throw error;
+  }
+
+  for (const transcription of data ?? []) {
+    const existing = transcriptionsByConversationId.get(transcription.conversation_id) ?? [];
+    existing.push(transcription);
+    transcriptionsByConversationId.set(transcription.conversation_id, existing);
+  }
+
+  return transcriptionsByConversationId;
 }

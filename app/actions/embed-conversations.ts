@@ -3,10 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getOpenAiEmbeddingEnv, getOwnerUserId } from "@/lib/env";
-import {
-  embedMissingConversations,
-  type ConversationEmbeddingSupabase,
-} from "@/lib/lifelog/conversation-embeddings";
+import { embedMissingConversations } from "@/lib/lifelog/conversation-embeddings";
 import type { EmbedConversationsActionState } from "@/lib/lifelog/embed-action-state";
 import { createOpenAiEmbeddingClient } from "@/lib/lifelog/openai-embeddings";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -40,7 +37,7 @@ export async function embedConversations(
       apiKey: openAiApiKey,
       embeddingModel,
     });
-    const supabase = createSupabaseAdminClient() as unknown as ConversationEmbeddingSupabase;
+    const supabase = createSupabaseAdminClient();
     const result = await embedMissingConversations({
       supabase,
       ownerUserId,

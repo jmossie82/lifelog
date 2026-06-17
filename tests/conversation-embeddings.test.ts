@@ -145,6 +145,69 @@ test("embedMissingConversations skips unchanged conversations", async () => {
   assert.equal(updates.length, 0);
 });
 
+test("embedMissingConversations fetches owner transcriptions in one batched query", async () => {
+  const updates: unknown[] = [];
+  const client = createEmbeddingRecordingClient({
+    conversations: [
+      {
+        id: "00000000-0000-4000-8000-000000000001",
+        user_id: "owner-1",
+        fieldy_id: "fieldy-1",
+        title: "Budget",
+        summary: "",
+        content: null,
+        keywords: [],
+        embedding_input_hash: null,
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000002",
+        user_id: "owner-1",
+        fieldy_id: "fieldy-2",
+        title: "Roadmap",
+        summary: "",
+        content: null,
+        keywords: [],
+        embedding_input_hash: null,
+      },
+    ],
+    transcriptions: [
+      {
+        id: "00000000-0000-4000-8000-000000000010",
+        user_id: "owner-1",
+        conversation_id: "00000000-0000-4000-8000-000000000001",
+        speaker_label: "Jamie",
+        text: "First transcript",
+        started_at: "2026-06-17T15:00:00.000Z",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000011",
+        user_id: "owner-1",
+        conversation_id: "00000000-0000-4000-8000-000000000002",
+        speaker_label: "Alex",
+        text: "Second transcript",
+        started_at: "2026-06-17T15:01:00.000Z",
+      },
+    ],
+    updates,
+  });
+
+  const embeddedInputs: string[] = [];
+  const result = await embedMissingConversations({
+    supabase: client,
+    ownerUserId: "owner-1",
+    embeddingModel: "text-embedding-3-small",
+    embedText: async (input) => {
+      embeddedInputs.push(input);
+      return [0.1, 0.2, 0.3];
+    },
+  });
+
+  assert.equal(result.embeddedCount, 2);
+  assert.equal(client.queryCounts.transcriptions, 1);
+  assert.match(embeddedInputs[0], /First transcript/);
+  assert.match(embeddedInputs[1], /Second transcript/);
+});
+
 test("embedMissingConversations skips empty conversations without embedding", async () => {
   const updates: unknown[] = [];
   const client = createEmbeddingRecordingClient({
@@ -255,25 +318,33 @@ function createEmbeddingRecordingClient({
   updateError?: Error | null;
 }): ConversationEmbeddingSupabase & {
   setConversationHash(hash: string): void;
+  queryCounts: { transcriptions: number };
   updateMatches: unknown[];
 } {
   const updateMatches: unknown[] = [];
+  const queryCounts = { transcriptions: 0 };
   const from = createFrom({
     conversations,
     transcriptions,
     updates,
     updateMatches,
+    queryCounts,
     conversationError,
     transcriptionError,
     updateError,
   });
 
   return {
+    queryCounts,
     updateMatches,
     setConversationHash(hash: string) {
       conversations[0].embedding_input_hash = hash;
     },
     from,
+  } as unknown as ConversationEmbeddingSupabase & {
+    setConversationHash(hash: string): void;
+    queryCounts: { transcriptions: number };
+    updateMatches: unknown[];
   };
 }
 
@@ -282,6 +353,7 @@ function createFrom({
   transcriptions,
   updates,
   updateMatches,
+  queryCounts,
   conversationError,
   transcriptionError,
   updateError,
@@ -290,6 +362,7 @@ function createFrom({
   transcriptions: TranscriptionEmbeddingRow[];
   updates: unknown[];
   updateMatches: unknown[];
+  queryCounts: { transcriptions: number };
   conversationError: Error | null;
   transcriptionError: Error | null;
   updateError: Error | null;
@@ -322,6 +395,7 @@ function createFrom({
       };
     }
 
+    queryCounts.transcriptions += 1;
     return createSelectQuery(transcriptions, transcriptionError);
   }
 
@@ -341,6 +415,10 @@ function createSelectQuery<TRow extends object>(
       filters[column] = value;
       return builder;
     },
+    in(column: string, values: unknown[]) {
+      filters[column] = values;
+      return builder;
+    },
     order(): Promise<QueryResult<TRow>> {
       return Promise.resolve({
         data: rows.filter((row) => matchesFilters(row, filters)),
@@ -357,5 +435,11 @@ function matchesFilters<TRow extends object>(
   filters: Record<string, unknown>,
 ) {
   const values = row as Record<string, unknown>;
-  return Object.entries(filters).every(([key, value]) => values[key] === value);
+  return Object.entries(filters).every(([key, value]) => {
+    if (Array.isArray(value)) {
+      return value.includes(values[key]);
+    }
+
+    return values[key] === value;
+  });
 }

@@ -44,11 +44,11 @@ export async function searchSemanticRecall({
   }
 
   const embedding = await embedText(normalizedQuery);
-  const { data, error } = await supabase.rpc("match_conversations" as never, {
+  const { data, error } = await supabase.rpc("match_conversations", {
     query_embedding: embedding,
     match_count: matchCount,
     match_threshold: matchThreshold,
-  } as never);
+  });
 
   if (error) {
     throw error;
