@@ -7,6 +7,7 @@ function readRequiredEnv(name: string) {
 }
 
 export const DEFAULT_DISPLAY_TIME_ZONE = "America/Chicago";
+export const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
 
 function assertValidTimeZone(value: string) {
   try {
@@ -61,4 +62,17 @@ export function getDisplayTimeZone() {
   const displayTimeZone = process.env.LIFELOG_DISPLAY_TIME_ZONE ?? DEFAULT_DISPLAY_TIME_ZONE;
   assertValidTimeZone(displayTimeZone);
   return displayTimeZone;
+}
+
+export function getOpenAiEmbeddingEnv() {
+  const embeddingModel = process.env.LIFELOG_EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL;
+
+  if (embeddingModel !== DEFAULT_EMBEDDING_MODEL) {
+    throw new Error(`LIFELOG_EMBEDDING_MODEL must be ${DEFAULT_EMBEDDING_MODEL}`);
+  }
+
+  return {
+    openAiApiKey: readRequiredEnv("OPENAI_API_KEY"),
+    embeddingModel,
+  };
 }

@@ -3,6 +3,7 @@ import { afterEach, test } from "node:test";
 
 import {
   DEFAULT_DISPLAY_TIME_ZONE,
+  getOpenAiEmbeddingEnv,
   getClientEnv,
   getDisplayTimeZone,
   getFieldyEnv,
@@ -121,5 +122,29 @@ test("getDisplayTimeZone rejects invalid timezone values", () => {
   assert.throws(
     () => getDisplayTimeZone(),
     /LIFELOG_DISPLAY_TIME_ZONE must be a valid IANA time zone/,
+  );
+});
+
+test("getOpenAiEmbeddingEnv returns server-only embedding settings", () => {
+  process.env.OPENAI_API_KEY = "sk-test-openai";
+  delete process.env.LIFELOG_EMBEDDING_MODEL;
+
+  assert.deepEqual(getOpenAiEmbeddingEnv(), {
+    openAiApiKey: "sk-test-openai",
+    embeddingModel: "text-embedding-3-small",
+  });
+
+  process.env.LIFELOG_EMBEDDING_MODEL = "text-embedding-3-small";
+
+  assert.equal(getOpenAiEmbeddingEnv().embeddingModel, "text-embedding-3-small");
+});
+
+test("getOpenAiEmbeddingEnv rejects unsupported embedding models", () => {
+  process.env.OPENAI_API_KEY = "sk-test-openai";
+  process.env.LIFELOG_EMBEDDING_MODEL = "text-embedding-3-large";
+
+  assert.throws(
+    () => getOpenAiEmbeddingEnv(),
+    /LIFELOG_EMBEDDING_MODEL must be text-embedding-3-small/,
   );
 });
