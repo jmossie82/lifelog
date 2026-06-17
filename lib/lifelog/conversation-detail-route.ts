@@ -1,4 +1,4 @@
-const DASHBOARD_BACK_PARAM_KEYS = ["q", "type", "range", "page"] as const;
+const DASHBOARD_BACK_PARAM_KEYS = ["q", "type", "range", "page", "recall"] as const;
 
 export function readFirstSearchParam(
   value: string | string[] | undefined,

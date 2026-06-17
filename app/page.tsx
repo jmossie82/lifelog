@@ -1,8 +1,19 @@
 import { redirect } from "next/navigation";
 import { LifelogDashboard } from "@/components/lifelog-dashboard";
-import { getDisplayTimeZone, getOwnerUserId } from "@/lib/env";
+import {
+  getDisplayTimeZone,
+  getOpenAiEmbeddingEnv,
+  getOwnerUserId,
+} from "@/lib/env";
 import { getDashboardData } from "@/lib/lifelog/dashboard-data";
 import { normalizeDashboardQuery } from "@/lib/lifelog/dashboard-query";
+import { readFirstSearchParam } from "@/lib/lifelog/conversation-detail-route";
+import { createOpenAiEmbeddingClient } from "@/lib/lifelog/openai-embeddings";
+import {
+  normalizeRecallQuery,
+  searchSemanticRecall,
+  type SemanticRecallSearchResult,
+} from "@/lib/lifelog/semantic-recall";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export default async function Home({
@@ -23,21 +34,43 @@ export default async function Home({
     redirect("/login?error=invalid_credentials");
   }
 
+  const resolvedSearchParams = await searchParams;
   const displayTimeZone = getDisplayTimeZone();
   const renderedAt = new Date();
-  const dashboardQuery = normalizeDashboardQuery(await searchParams);
+  const dashboardQuery = normalizeDashboardQuery(resolvedSearchParams);
   const dashboardData = await getDashboardData(supabase, {
     userId: user.id,
     query: dashboardQuery,
     displayTimeZone,
     now: renderedAt,
   });
+  const recallQuery = normalizeRecallQuery(
+    readFirstSearchParam(resolvedSearchParams.recall),
+  );
+  let semanticRecall: SemanticRecallSearchResult = { query: "", results: [] };
+
+  if (recallQuery) {
+    try {
+      const { openAiApiKey, embeddingModel } = getOpenAiEmbeddingEnv();
+      semanticRecall = await searchSemanticRecall({
+        supabase,
+        query: recallQuery,
+        embedText: createOpenAiEmbeddingClient({
+          apiKey: openAiApiKey,
+          embeddingModel,
+        }).embedText,
+      });
+    } catch {
+      semanticRecall = { query: recallQuery, results: [] };
+    }
+  }
 
   return (
     <LifelogDashboard
       data={dashboardData}
       displayTimeZone={displayTimeZone}
       renderedAt={renderedAt.toISOString()}
+      semanticRecall={semanticRecall}
     />
   );
 }
