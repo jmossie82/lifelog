@@ -19,9 +19,11 @@ LIFELOG_OWNER_USER_ID=...
 FIELDY_API_KEY=sk-fieldy-...
 FIELDY_WEBHOOK_SECRET=...
 FIELDY_BACKFILL_DAYS=30
+LIFELOG_DISPLAY_TIME_ZONE=America/Chicago
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY`, `FIELDY_API_KEY`, and `FIELDY_WEBHOOK_SECRET` are server-only secrets. Do not expose them with a `NEXT_PUBLIC_` prefix.
+`LIFELOG_DISPLAY_TIME_ZONE` is optional and defaults to `America/Chicago`; set it to the owner's IANA time zone for dashboard grouping and display.
 
 ## Supabase Setup
 

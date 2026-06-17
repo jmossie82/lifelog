@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
 import {
+  DEFAULT_DISPLAY_TIME_ZONE,
   getClientEnv,
+  getDisplayTimeZone,
   getFieldyEnv,
   getFieldyWebhookSecret,
   getOwnerUserId,
@@ -99,4 +101,25 @@ test("getOwnerUserId returns the configured owner user id", () => {
   process.env.LIFELOG_OWNER_USER_ID = "00000000-0000-4000-8000-000000000001";
 
   assert.equal(getOwnerUserId(), "00000000-0000-4000-8000-000000000001");
+});
+
+test("getDisplayTimeZone defaults to the app display timezone", () => {
+  delete process.env.LIFELOG_DISPLAY_TIME_ZONE;
+
+  assert.equal(getDisplayTimeZone(), DEFAULT_DISPLAY_TIME_ZONE);
+});
+
+test("getDisplayTimeZone accepts a configured IANA timezone", () => {
+  process.env.LIFELOG_DISPLAY_TIME_ZONE = "America/Los_Angeles";
+
+  assert.equal(getDisplayTimeZone(), "America/Los_Angeles");
+});
+
+test("getDisplayTimeZone rejects invalid timezone values", () => {
+  process.env.LIFELOG_DISPLAY_TIME_ZONE = "not-a-timezone";
+
+  assert.throws(
+    () => getDisplayTimeZone(),
+    /LIFELOG_DISPLAY_TIME_ZONE must be a valid IANA time zone/,
+  );
 });

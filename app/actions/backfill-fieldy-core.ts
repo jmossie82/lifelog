@@ -171,7 +171,7 @@ async function finishSyncRun<TSupabase>({
 
 function getConversationTranscriptionRange(conversation: FieldyConversation) {
   if (!conversation.startTime || !conversation.endTime) {
-    throw new Error("Fieldy backfill encountered an unbounded conversation");
+    return null;
   }
 
   return {
@@ -235,9 +235,10 @@ export async function runFieldyBackfill<TSupabase>({
     const ingestion = createIngestionService({ supabase, ownerUserId });
 
     for (const conversation of conversations) {
-      const transcriptions = await fieldyClient.fetchTranscriptions(
-        getConversationTranscriptionRange(conversation),
-      );
+      const transcriptionRange = getConversationTranscriptionRange(conversation);
+      const transcriptions = transcriptionRange
+        ? await fieldyClient.fetchTranscriptions(transcriptionRange)
+        : [];
       const result = await ingestion.ingestConversationSet({
         conversation,
         transcriptions,
