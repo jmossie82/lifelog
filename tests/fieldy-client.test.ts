@@ -97,6 +97,47 @@ test("fetchTasks requests each documented status", async () => {
   assert.equal(tasks.some((task) => task.status === "expired"), true);
 });
 
+test("fetchTasks pages through nextCursor for each status", async () => {
+  const requestedUrls: string[] = [];
+  const fetchImpl = async (url: string) => {
+    requestedUrls.push(url);
+    const parsedUrl = new URL(url);
+    const status = parsedUrl.searchParams.get("status");
+    const cursor = parsedUrl.searchParams.get("cursor");
+
+    if (status === "new" && !cursor) {
+      return jsonResponse({
+        items: [{ id: "new-1", title: "first", status }],
+        nextCursor: "new-next",
+      });
+    }
+
+    if (status === "new" && cursor === "new-next") {
+      return jsonResponse({
+        items: [{ id: "new-2", title: "second", status }],
+        nextCursor: null,
+      });
+    }
+
+    return jsonResponse({
+      items: [],
+      nextCursor: null,
+    });
+  };
+  const client = createFieldyClient({ apiKey: "test-key", fetchImpl });
+
+  const tasks = await client.fetchTasks();
+
+  assert.deepEqual(
+    tasks.map((task) => task.id),
+    ["new-1", "new-2"],
+  );
+  assert.equal(
+    requestedUrls.some((url) => new URL(url).searchParams.get("cursor") === "new-next"),
+    true,
+  );
+});
+
 test("non-429 failures throw FieldyApiError with status", async () => {
   const fetchImpl = async () => jsonResponse({ error: "nope" }, { status: 500 });
   const client = createFieldyClient({ apiKey: "test-key", fetchImpl });

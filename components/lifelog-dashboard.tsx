@@ -64,9 +64,6 @@ const navItems = [
 ];
 
 const tabs = ["All", "Conversations", "Notes", "Tasks", "Mentions"] as const;
-const syncFieldy = backfillFieldy as unknown as (
-  formData: FormData,
-) => Promise<void>;
 
 function getConversationIcon(type: ConversationType) {
   if (type === "note") return Tags;
@@ -261,7 +258,7 @@ export function LifelogDashboard({ data }: { data: DashboardData }) {
           </div>
         </section>
 
-        <form action={syncFieldy}>
+              <form action={backfillFieldy}>
           <button className="sync-button" type="submit">
             <RefreshCcw aria-hidden="true" size={18} />
             Sync Fieldy

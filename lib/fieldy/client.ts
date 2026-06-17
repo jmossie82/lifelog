@@ -155,8 +155,8 @@ export function createFieldyClient({
       const allTasks: FieldyTask[] = [];
       for (const status of FIELDY_TASK_STATUSES) {
         const params = new URLSearchParams({ status });
-        const page = await requestJson<{ items: FieldyTask[] }>("/tasks", params);
-        allTasks.push(...page.items);
+        const tasks = await collectPages<FieldyTask>("/tasks", params);
+        allTasks.push(...tasks);
       }
       return allTasks;
     },

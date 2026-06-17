@@ -12,9 +12,8 @@ test("webhook route uses FIELDY_WEBHOOK_SECRET and documented validation", () =>
   assert.match(source, /fieldyWebhookSecret/);
   assert.match(source, /getFieldyWebhookSecret/);
   assert.match(source, /FIELDY_WEBHOOK_SECRET_HEADER = "x-fieldy-webhook-secret"/);
+  assert.match(source, /request\.nextUrl\.searchParams\.get\("secret"\)/);
   assert.match(source, /request\.headers\.get\(FIELDY_WEBHOOK_SECRET_HEADER\)/);
-  assert.doesNotMatch(source, /nextUrl\.searchParams/);
-  assert.doesNotMatch(source, /searchParams\.get\("secret"\)/);
   assert.match(source, /validateFieldyWebhookPayload/);
   assert.doesNotMatch(source, /FIELDY_WEBHOOK_TOKEN/);
   assert.doesNotMatch(source, /conversation\.processed/);
@@ -23,7 +22,7 @@ test("webhook route uses FIELDY_WEBHOOK_SECRET and documented validation", () =>
 test("webhook route checks the secret before unrelated Fieldy env", () => {
   assert.match(
     source,
-    /const fieldyWebhookSecret = getFieldyWebhookSecret\(\)[\s\S]*request\.headers\.get\(FIELDY_WEBHOOK_SECRET_HEADER\)[\s\S]*if \(secret !== fieldyWebhookSecret\)[\s\S]*const \{ fieldyApiKey \} = getFieldyEnv\(\)/,
+    /const fieldyWebhookSecret = getFieldyWebhookSecret\(\)[\s\S]*request\.nextUrl\.searchParams\.get\("secret"\)[\s\S]*request\.headers\.get\(FIELDY_WEBHOOK_SECRET_HEADER\)[\s\S]*if \(secret !== fieldyWebhookSecret\)[\s\S]*const \{ fieldyApiKey \} = getFieldyEnv\(\)/,
   );
 });
 

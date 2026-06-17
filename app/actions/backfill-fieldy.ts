@@ -9,8 +9,10 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { runFieldyBackfill } from "./backfill-fieldy-core";
 
-export async function backfillFieldy() {
-  return runFieldyBackfill({
+export async function backfillFieldy(_formData: FormData): Promise<void> {
+  void _formData;
+
+  await runFieldyBackfill({
     getOwnerUserId,
     getCurrentUser: async () => {
       const supabase = await createSupabaseServerClient();

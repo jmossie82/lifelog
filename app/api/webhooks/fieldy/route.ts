@@ -105,7 +105,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const fieldyWebhookSecret = getFieldyWebhookSecret();
-    const secret = request.headers.get(FIELDY_WEBHOOK_SECRET_HEADER);
+    const secret = request.nextUrl.searchParams.get("secret")
+      ?? request.headers.get(FIELDY_WEBHOOK_SECRET_HEADER);
 
     if (secret !== fieldyWebhookSecret) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
