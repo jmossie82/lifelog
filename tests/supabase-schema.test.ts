@@ -8,29 +8,14 @@ const migration = readFileSync(
 );
 
 const normalizedMigration = migration.replace(/\s+/g, " ").trim();
-const ownerUsing = "using \\(\\(select auth\\.uid\\(\\)\\) = user_id\\)";
-const ownerCheck = "with check \\(\\(select auth\\.uid\\(\\)\\) = user_id\\)";
 
-function assertOwnerPolicy(table: string, action: "select" | "insert" | "update") {
-  const policyAction = action === "select" ? "read" : action;
+function assertOwnerReadPolicy(table: string) {
   const policyTableName = table.replace("_", " ");
-  const basePolicyPattern = `create policy "Owner can ${policyAction} ${policyTableName}" on public\\.${table} for ${action} to authenticated`;
-
-  assert.match(normalizedMigration, new RegExp(basePolicyPattern));
-
-  if (action === "select") {
-    assert.match(normalizedMigration, new RegExp(`${basePolicyPattern} ${ownerUsing};`));
-    return;
-  }
-
-  if (action === "insert") {
-    assert.match(normalizedMigration, new RegExp(`${basePolicyPattern} ${ownerCheck};`));
-    return;
-  }
+  const basePolicyPattern = `create policy "Owner can read ${policyTableName}" on public\\.${table} for select to authenticated`;
 
   assert.match(
     normalizedMigration,
-    new RegExp(`${basePolicyPattern} ${ownerUsing} ${ownerCheck};`),
+    new RegExp(`${basePolicyPattern} using \\(public\\.is_lifelog_owner\\(user_id\\)\\);`),
   );
 }
 
@@ -41,11 +26,33 @@ test("migration creates private owner foundation tables", () => {
   }
 });
 
-test("migration scopes every owner table action with select auth.uid", () => {
+test("migration creates a private configured-owner guard", () => {
+  assert.match(migration, /create table public\.lifelog_owner_config/);
+  assert.match(migration, /user_id uuid not null references auth\.users\(id\) on delete cascade/);
+  assert.match(migration, /constraint lifelog_owner_config_single_row check \(id = 1\)/);
+  assert.match(
+    migration,
+    /create or replace function public\.is_lifelog_owner\(row_user_id uuid\)/,
+  );
+  assert.match(migration, /security definer/);
+  assert.match(migration, /set search_path = ''/);
+  assert.match(migration, /\(select auth\.uid\(\)\) = row_user_id/);
+  assert.match(migration, /from public\.lifelog_owner_config/);
+  assert.match(migration, /alter table public\.lifelog_owner_config enable row level security/);
+  assert.doesNotMatch(migration, /create policy "[^"]+"[\s\S]*on public\.lifelog_owner_config/);
+});
+
+test("migration scopes owner data reads to the configured owner only", () => {
   for (const table of ["conversations", "transcriptions", "tasks", "sync_runs"]) {
-    assertOwnerPolicy(table, "select");
-    assertOwnerPolicy(table, "insert");
-    assertOwnerPolicy(table, "update");
+    assertOwnerReadPolicy(table);
+    assert.doesNotMatch(
+      normalizedMigration,
+      new RegExp(`create policy "[^"]+" on public\\.${table} for insert to authenticated`),
+    );
+    assert.doesNotMatch(
+      normalizedMigration,
+      new RegExp(`create policy "[^"]+" on public\\.${table} for update to authenticated`),
+    );
   }
 });
 

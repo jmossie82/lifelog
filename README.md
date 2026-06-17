@@ -27,24 +27,33 @@ FIELDY_BACKFILL_DAYS=30
 
 Apply the migration in `supabase/migrations/20260616000000_private_owner_foundation.sql` to create:
 
+- `lifelog_owner_config`
 - `conversations`
 - `transcriptions`
 - `tasks`
 - `sync_runs`
 
-All tables have RLS enabled and owner-scoped policies.
+All tables have RLS enabled. Owner data tables expose authenticated read policies only for the configured owner. Ingestion and backfill writes use the server-only Supabase service role.
 
-Create the owner user in Supabase Auth, then set `LIFELOG_OWNER_USER_ID` to that auth user id.
+Create the owner user in Supabase Auth, then set `LIFELOG_OWNER_USER_ID` to that auth user id. Insert or update the singleton owner config row with the same id:
+
+```sql
+insert into public.lifelog_owner_config (id, user_id)
+values (1, 'LIFELOG_OWNER_USER_ID')
+on conflict (id) do update set user_id = excluded.user_id;
+```
 
 ## Fieldy Setup
 
 Create a Fieldy API key from Fieldy Developer Settings and set `FIELDY_API_KEY`.
 
-Configure the Fieldy webhook URL with the app-owned secret:
+Configure the Fieldy webhook URL without secrets in the URL:
 
 ```text
-https://your-app.example.com/api/webhooks/fieldy?secret=FIELDY_WEBHOOK_SECRET_VALUE
+https://your-app.example.com/api/webhooks/fieldy
 ```
+
+Configure the webhook request header `X-Fieldy-Webhook-Secret` with the value of `FIELDY_WEBHOOK_SECRET`.
 
 Fieldy public webhook docs currently describe completed transcription payloads. The app uses each webhook as a reconciliation trigger and fetches canonical conversation/transcription data from the Fieldy Public API.
 

@@ -72,6 +72,30 @@ create table public.sync_runs (
   error_message text
 );
 
+create table public.lifelog_owner_config (
+  id smallint primary key default 1,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint lifelog_owner_config_single_row check (id = 1)
+);
+
+create or replace function public.is_lifelog_owner(row_user_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    (select auth.uid()) = row_user_id
+    and exists (
+      select 1
+      from public.lifelog_owner_config
+      where user_id = row_user_id
+    );
+$$;
+
 create index conversations_user_started_at_idx
   on public.conversations (user_id, started_at desc nulls last);
 
@@ -96,71 +120,32 @@ create trigger tasks_set_updated_at
   before update on public.tasks
   for each row execute function public.set_updated_at();
 
+create trigger lifelog_owner_config_set_updated_at
+  before update on public.lifelog_owner_config
+  for each row execute function public.set_updated_at();
+
 alter table public.conversations enable row level security;
 alter table public.transcriptions enable row level security;
 alter table public.tasks enable row level security;
 alter table public.sync_runs enable row level security;
+alter table public.lifelog_owner_config enable row level security;
 
 create policy "Owner can read conversations"
   on public.conversations for select
   to authenticated
-  using ((select auth.uid()) = user_id);
-
-create policy "Owner can insert conversations"
-  on public.conversations for insert
-  to authenticated
-  with check ((select auth.uid()) = user_id);
-
-create policy "Owner can update conversations"
-  on public.conversations for update
-  to authenticated
-  using ((select auth.uid()) = user_id)
-  with check ((select auth.uid()) = user_id);
+  using (public.is_lifelog_owner(user_id));
 
 create policy "Owner can read transcriptions"
   on public.transcriptions for select
   to authenticated
-  using ((select auth.uid()) = user_id);
-
-create policy "Owner can insert transcriptions"
-  on public.transcriptions for insert
-  to authenticated
-  with check ((select auth.uid()) = user_id);
-
-create policy "Owner can update transcriptions"
-  on public.transcriptions for update
-  to authenticated
-  using ((select auth.uid()) = user_id)
-  with check ((select auth.uid()) = user_id);
+  using (public.is_lifelog_owner(user_id));
 
 create policy "Owner can read tasks"
   on public.tasks for select
   to authenticated
-  using ((select auth.uid()) = user_id);
-
-create policy "Owner can insert tasks"
-  on public.tasks for insert
-  to authenticated
-  with check ((select auth.uid()) = user_id);
-
-create policy "Owner can update tasks"
-  on public.tasks for update
-  to authenticated
-  using ((select auth.uid()) = user_id)
-  with check ((select auth.uid()) = user_id);
+  using (public.is_lifelog_owner(user_id));
 
 create policy "Owner can read sync runs"
   on public.sync_runs for select
   to authenticated
-  using ((select auth.uid()) = user_id);
-
-create policy "Owner can insert sync runs"
-  on public.sync_runs for insert
-  to authenticated
-  with check ((select auth.uid()) = user_id);
-
-create policy "Owner can update sync runs"
-  on public.sync_runs for update
-  to authenticated
-  using ((select auth.uid()) = user_id)
-  with check ((select auth.uid()) = user_id);
+  using (public.is_lifelog_owner(user_id));

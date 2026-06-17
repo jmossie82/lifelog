@@ -15,6 +15,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/supabase/types";
 
 const FIELDY_REQUEST_SPACING_MS = 2100;
+const FIELDY_WEBHOOK_SECRET_HEADER = "x-fieldy-webhook-secret";
 
 type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>;
 type SyncRunRow = Database["public"]["Tables"]["sync_runs"]["Row"];
@@ -104,7 +105,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const fieldyWebhookSecret = getFieldyWebhookSecret();
-    const secret = request.nextUrl.searchParams.get("secret");
+    const secret = request.headers.get(FIELDY_WEBHOOK_SECRET_HEADER);
 
     if (secret !== fieldyWebhookSecret) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
