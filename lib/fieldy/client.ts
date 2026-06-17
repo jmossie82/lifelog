@@ -24,6 +24,7 @@ type FieldyClientOptions = {
   fetchImpl?: FetchImpl;
   fallbackRetryDelayMs?: number;
   minRequestSpacingMs?: number;
+  requestTimeoutMs?: number;
   sleepImpl?: (ms: number) => Promise<unknown>;
 };
 
@@ -51,11 +52,21 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isAbortError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    error.name === "AbortError"
+  );
+}
+
 export function createFieldyClient({
   apiKey,
   fetchImpl = fetch,
   fallbackRetryDelayMs = 60_000,
   minRequestSpacingMs = 0,
+  requestTimeoutMs = 15_000,
   sleepImpl = sleep,
 }: FieldyClientOptions) {
   let lastRequestAt = 0;
@@ -75,30 +86,45 @@ export function createFieldyClient({
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
       await waitForRequestSlot();
-      const response = await fetchImpl(url.toString(), {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-      });
-      lastRequestAt = Date.now();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), requestTimeoutMs);
+      let response: Response;
 
-      if (response.status === 429 && attempt === 0) {
-        const retryAfterHeader = response.headers.get("retry-after");
-        const retryAfterSeconds = retryAfterHeader?.trim()
-          ? Number(retryAfterHeader)
-          : Number.NaN;
-        const cooldownMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0
-          ? retryAfterSeconds * 1000
-          : fallbackRetryDelayMs;
-        await sleepImpl(cooldownMs);
-        continue;
+      try {
+        response = await fetchImpl(url.toString(), {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+          },
+          signal: controller.signal,
+        });
+        lastRequestAt = Date.now();
+
+        if (response.status === 429 && attempt === 0) {
+          const retryAfterHeader = response.headers.get("retry-after");
+          const retryAfterSeconds = retryAfterHeader?.trim()
+            ? Number(retryAfterHeader)
+            : Number.NaN;
+          const cooldownMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0
+            ? retryAfterSeconds * 1000
+            : fallbackRetryDelayMs;
+          clearTimeout(timeoutId);
+          await sleepImpl(cooldownMs);
+          continue;
+        }
+
+        if (!response.ok) {
+          throw new FieldyApiError(`Fieldy API request failed with ${response.status}`, response.status);
+        }
+
+        return (await response.json()) as TResponse;
+      } catch (error) {
+        if (isAbortError(error)) {
+          throw new FieldyApiError("Fieldy API request timed out", 504);
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeoutId);
       }
-
-      if (!response.ok) {
-        throw new FieldyApiError(`Fieldy API request failed with ${response.status}`, response.status);
-      }
-
-      return (await response.json()) as TResponse;
     }
 
     throw new FieldyApiError("Fieldy API request failed with 429", 429);
@@ -111,9 +137,14 @@ export function createFieldyClient({
   async function collectPages<TItem>(path: string, params: URLSearchParams) {
     const items: TItem[] = [];
     let cursor: string | null | undefined;
+    const seenCursors = new Set<string>();
 
     do {
       if (cursor) {
+        if (seenCursors.has(cursor)) {
+          throw new FieldyApiError("Fieldy API pagination cursor loop detected", 502);
+        }
+        seenCursors.add(cursor);
         params.set("cursor", cursor);
       } else {
         params.delete("cursor");

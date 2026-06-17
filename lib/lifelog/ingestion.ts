@@ -137,15 +137,19 @@ export function createIngestionService({
       }
     }
 
-    const taskRows: TaskInsert[] = tasks.map((task) => ({
-      user_id: ownerUserId,
-      conversation_id: task.memoryId === conversation.id ? savedConversation.id : null,
-      fieldy_task_id: deriveFieldyTaskId(conversation.id, task),
-      title: task.title,
-      status: task.status,
-      due_at: toIsoOrNull(task.date),
-      fieldy_metadata: taskMetadata(task),
-    }));
+    const taskRows: TaskInsert[] = tasks.map((task) => {
+      const taskScopeId = task.memoryId ?? conversation.id;
+
+      return {
+        user_id: ownerUserId,
+        conversation_id: task.memoryId === conversation.id ? savedConversation.id : null,
+        fieldy_task_id: deriveFieldyTaskId(taskScopeId, task),
+        title: task.title,
+        status: task.status,
+        due_at: toIsoOrNull(task.date),
+        fieldy_metadata: taskMetadata(task),
+      };
+    });
 
     if (taskRows.length > 0) {
       const { error } = await supabase.from("tasks").upsert(taskRows, {

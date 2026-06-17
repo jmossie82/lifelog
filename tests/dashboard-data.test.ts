@@ -17,6 +17,7 @@ test("mapDashboardData groups conversations and counts open tasks", () => {
         started_at: "2026-06-16T15:00:00.000Z",
         ended_at: "2026-06-16T15:30:00.000Z",
         keywords: ["planning"],
+        fieldy_metadata: { type: "conversation" },
       },
     ],
     tasks: [

@@ -138,6 +138,82 @@ test("fetchTasks pages through nextCursor for each status", async () => {
   );
 });
 
+test("pagination rejects repeated cursors", async () => {
+  const fetchImpl = async () =>
+    jsonResponse({
+      items: [{ id: "looping", text: "Still looping" }],
+      nextCursor: "same-cursor",
+    });
+  const client = createFieldyClient({ apiKey: "test-key", fetchImpl });
+
+  await assert.rejects(
+    () => client.fetchTranscriptions({ startTime: "2026-06-16T12:00:00.000Z" }),
+    (error) => {
+      assert.equal(error instanceof FieldyApiError, true);
+      assert.equal((error as FieldyApiError).status, 502);
+      assert.match((error as Error).message, /pagination cursor loop/);
+      return true;
+    },
+  );
+});
+
+test("timed out Fieldy requests throw a FieldyApiError", async () => {
+  const fetchImpl: typeof fetch = async (_url, init) =>
+    new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => {
+        reject(new DOMException("aborted", "AbortError"));
+      });
+    });
+  const client = createFieldyClient({
+    apiKey: "test-key",
+    fetchImpl,
+    requestTimeoutMs: 1,
+  });
+
+  await assert.rejects(
+    () => client.fetchTranscriptions({ startTime: "2026-06-16T12:00:00.000Z" }),
+    (error) => {
+      assert.equal(error instanceof FieldyApiError, true);
+      assert.equal((error as FieldyApiError).status, 504);
+      assert.match((error as Error).message, /timed out/);
+      return true;
+    },
+  );
+});
+
+test("timed out Fieldy response bodies throw a FieldyApiError", async () => {
+  const fetchImpl: typeof fetch = async (_url, init) => {
+    const response = {
+      ok: true,
+      status: 200,
+      async json() {
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        });
+      },
+    } as Response;
+
+    return response;
+  };
+  const client = createFieldyClient({
+    apiKey: "test-key",
+    fetchImpl,
+    requestTimeoutMs: 1,
+  });
+
+  await assert.rejects(
+    () => client.fetchTranscriptions({ startTime: "2026-06-16T12:00:00.000Z" }),
+    (error) => {
+      assert.equal(error instanceof FieldyApiError, true);
+      assert.equal((error as FieldyApiError).status, 504);
+      assert.match((error as Error).message, /timed out/);
+      return true;
+    },
+  );
+});
+
 test("non-429 failures throw FieldyApiError with status", async () => {
   const fetchImpl = async () => jsonResponse({ error: "nope" }, { status: 500 });
   const client = createFieldyClient({ apiKey: "test-key", fetchImpl });

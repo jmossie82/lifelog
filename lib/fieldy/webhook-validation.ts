@@ -32,8 +32,12 @@ export function validateFieldyWebhookPayload(body: unknown): PayloadValidation {
     return { ok: false, status: 400, error: "JSON payload must be an object" };
   }
 
+  const hasValidDate =
+    typeof body.date === "string" &&
+    !Number.isNaN(new Date(body.date).getTime());
+
   if (
-    typeof body.date !== "string" ||
+    !hasValidDate ||
     typeof body.transcription !== "string" ||
     !Array.isArray(body.transcriptions) ||
     body.transcriptions.length === 0 ||

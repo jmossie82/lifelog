@@ -18,3 +18,11 @@ test("dashboard uses mapped persisted conversation type for timeline filters", (
   assert.match(source, /type:\s*conversation\.type/);
   assert.doesNotMatch(source, /type:\s*"conversation"/);
 });
+
+test("dashboard memoizes imported conversation aggregates", () => {
+  assert.match(
+    source,
+    /todayConversationCount,\s*keywordRows,\s*keywordCount,\s*keywordMax[\s\S]*useMemo/,
+  );
+  assert.match(source, /\}, \[conversations, data\.conversations\]\)/);
+});

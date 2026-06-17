@@ -6,6 +6,7 @@ import {
   normalizeConversation,
   type IngestionSupabase,
 } from "../lib/lifelog/ingestion.ts";
+import { deriveFieldyTaskId } from "../lib/lifelog/idempotency.ts";
 
 function createSupabaseTableRecorder({
   conversationResult = {
@@ -189,22 +190,26 @@ test("ingestConversationSet leaves task conversation_id null when memoryId does 
     ownerUserId: "owner-1",
   });
 
+  const task = {
+    title: "Review unrelated notes",
+    status: "new" as const,
+    memoryId: "conversation-2",
+  };
+
   await service.ingestConversationSet({
     conversation: {
       id: "conversation-1",
       title: "Standup",
     },
-    tasks: [
-      {
-        title: "Review unrelated notes",
-        status: "new",
-        memoryId: "conversation-2",
-      },
-    ],
+    tasks: [task],
   });
 
   assert.equal(recorder.calls[1]?.table, "tasks");
   assert.equal(recorder.calls[1]?.rows[0]?.conversation_id, null);
+  assert.equal(
+    recorder.calls[1]?.rows[0]?.fieldy_task_id,
+    deriveFieldyTaskId("conversation-2", task),
+  );
   assert.deepEqual(recorder.calls[1]?.options, {
     onConflict: "user_id,fieldy_task_id",
   });
