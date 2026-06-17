@@ -60,7 +60,7 @@ test("mapDashboardData handles empty imported state", () => {
   assert.equal(data.lastSync, null);
 });
 
-test("mapDashboardData exposes safe sync display fields", () => {
+test("mapDashboardData does not expose raw sync errors to client data", () => {
   const data = mapDashboardData({
     conversations: [],
     tasks: [],
@@ -78,6 +78,16 @@ test("mapDashboardData exposes safe sync display fields", () => {
     ],
   });
 
+  assert.deepEqual(data.lastSync, {
+    id: "sync-1",
+    source: "backfill",
+    status: "failed",
+    started_at: "2026-06-16T16:00:00.000Z",
+    finished_at: "2026-06-16T16:01:00.000Z",
+    imported_count: 0,
+  });
+  assert.equal("error_message" in (data.lastSync ?? {}), false);
+  assert.equal(JSON.stringify(data).includes("sk-fieldy-secret"), false);
   assert.deepEqual(data.lastSyncDisplay, {
     source: "backfill",
     status: "failed",

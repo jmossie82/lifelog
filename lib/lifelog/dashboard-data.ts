@@ -51,6 +51,8 @@ export type DashboardSyncRunRow = Pick<
   | "error_message"
 >;
 
+export type DashboardSyncSummary = Omit<DashboardSyncRunRow, "error_message">;
+
 export type DashboardSyncDisplay = {
   source: DashboardSyncRunRow["source"];
   status: DashboardSyncRunRow["status"];
@@ -78,7 +80,7 @@ export type DashboardData = {
     conversationId: string | null;
   }>;
   openTaskCount: number;
-  lastSync: DashboardSyncRunRow | null;
+  lastSync: DashboardSyncSummary | null;
   lastSyncDisplay: DashboardSyncDisplay | null;
   query: DashboardQuery;
   totalConversationCount: number;
@@ -106,6 +108,21 @@ function toSafeSyncDisplayError(errorMessage: string | null) {
   }
 
   return "Sync failed. Check Fieldy configuration and try again.";
+}
+
+function mapSyncRunSummary(
+  syncRun: DashboardSyncRunRow | null,
+): DashboardSyncSummary | null {
+  if (!syncRun) return null;
+
+  return {
+    id: syncRun.id,
+    source: syncRun.source,
+    status: syncRun.status,
+    started_at: syncRun.started_at,
+    finished_at: syncRun.finished_at,
+    imported_count: syncRun.imported_count,
+  };
 }
 
 export function mapSyncRunDisplay(
@@ -161,7 +178,7 @@ export function mapDashboardData({
     })),
     openTaskCount:
       openTaskCount ?? tasks.filter((task) => openStatuses.has(task.status)).length,
-    lastSync: syncRuns[0] ?? null,
+    lastSync: mapSyncRunSummary(syncRuns[0] ?? null),
     lastSyncDisplay: mapSyncRunDisplay(syncRuns[0] ?? null),
     query,
     totalConversationCount: conversationCount,
