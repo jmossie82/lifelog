@@ -13,9 +13,9 @@ test("readFirstSearchParam reads the first duplicate value", () => {
 test("buildConversationBackHref preserves only dashboard query params", () => {
   assert.equal(
     buildConversationBackHref({
-      from: "?q=budget&type=note&range=week&page=2&evil=https://example.com",
+      from: "?q=budget&type=note&range=week&page=2&recall=planning&evil=https://example.com",
     }),
-    "/?q=budget&type=note&range=week&page=2",
+    "/?q=budget&type=note&range=week&page=2&recall=planning",
   );
 });
 

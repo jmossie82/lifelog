@@ -71,6 +71,25 @@ test("dashboard renders sync activity panel with action state", () => {
   assert.match(source, /sync-activity-panel/);
 });
 
+test("dashboard exposes semantic recall search and embedding action", () => {
+  assert.match(source, /embedConversations/);
+  assert.match(source, /initialEmbedConversationsActionState/);
+  assert.match(source, /name="recall"/);
+  assert.match(source, /aria-label="Semantic recall search"/);
+  assert.match(source, /Semantic recall/);
+  assert.match(source, /similarity/);
+  assert.match(source, /Embed conversations/);
+});
+
+test("dashboard preserves semantic recall in URL navigation and detail links", () => {
+  assert.match(source, /if \(semanticRecall\.query\) params\.set\("recall", semanticRecall\.query\)/);
+  assert.match(source, /navigateWith\(\{ recall: recall \|\| null \}\)/);
+  assert.match(
+    source,
+    /href=\{`\/conversations\/\$\{result\.id\}\$\{[\s\S]*from=\$\{encodeURIComponent\(currentFromQuery\)\}/,
+  );
+});
+
 test("dashboard distinguishes active-filter empty results from imported-empty results", () => {
   assert.match(source, /hasActiveFilters/);
   assert.match(source, /const hasImportedConversations = data\.importedConversationCount > 0/);
@@ -83,6 +102,10 @@ test("dashboard links conversations and preserves from query", () => {
   assert.match(source, /href=\{conversation\.href\}/);
   assert.match(source, /\/conversations\/\$\{conversation\.id\}/);
   assert.match(source, /from/);
+  assert.match(
+    source,
+    /href: `\/conversations\/\$\{conversation\.id\}\$\{[\s\S]*currentFromQuery[\s\S]*encodeURIComponent\(currentFromQuery\)/,
+  );
 });
 
 test("dashboard conversation row link is a focusable grid box", () => {

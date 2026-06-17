@@ -21,6 +21,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { useActionState, useMemo, useState, useTransition } from "react";
+import { embedConversations } from "@/app/actions/embed-conversations";
 import { backfillFieldy } from "@/app/actions/backfill-fieldy";
 import {
   initialBackfillActionState,
@@ -28,6 +29,11 @@ import {
 } from "@/lib/lifelog/backfill-action-state";
 import type { DashboardData } from "@/lib/lifelog/dashboard-data";
 import type { DashboardConversationFilterType } from "@/lib/lifelog/dashboard-query";
+import {
+  initialEmbedConversationsActionState,
+  type EmbedConversationsActionState,
+} from "@/lib/lifelog/embed-action-state";
+import type { SemanticRecallResult } from "@/lib/lifelog/semantic-recall";
 
 type ConversationType = DashboardData["conversations"][number]["type"];
 
@@ -55,7 +61,7 @@ type Task = {
 const navItems = [
   { label: "Timeline", icon: BarChart3 },
   { label: "Search", icon: Search },
-  { label: "Recall Chat", icon: MessageSquareText },
+  { label: "Recall", icon: MessageSquareText },
   { label: "Tasks", icon: ListChecks },
   { label: "Insights", icon: Tags },
   { label: "Calendar", icon: CalendarDays },
@@ -174,10 +180,15 @@ export function LifelogDashboard({
   data,
   displayTimeZone,
   renderedAt,
+  semanticRecall,
 }: {
   data: DashboardData;
   displayTimeZone: string;
   renderedAt: string;
+  semanticRecall: {
+    query: string;
+    results: SemanticRecallResult[];
+  };
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -189,10 +200,17 @@ export function LifelogDashboard({
     ) => Promise<BackfillActionState>,
     initialBackfillActionState,
   );
+  const [embedState, embedAction, isEmbedPending] = useActionState(
+    embedConversations as (
+      state: EmbedConversationsActionState,
+      formData: FormData,
+    ) => Promise<EmbedConversationsActionState>,
+    initialEmbedConversationsActionState,
+  );
   const [chatInput, setChatInput] = useState("");
   const [recallAnswer, setRecallAnswer] = useState(
     data.conversations.length > 0
-      ? `Imported ${data.conversations.length} Fieldy conversations and ${data.openTaskCount} open action items.`
+      ? `Preview: ${data.conversations.length} imported Fieldy conversations and ${data.openTaskCount} open action items.`
       : "Run a manual sync to import your recent Fieldy history.",
   );
 
@@ -221,6 +239,7 @@ export function LifelogDashboard({
     if (data.query.type !== "all") params.set("type", data.query.type);
     if (data.query.range !== "all") params.set("range", data.query.range);
     if (data.query.page > 1) params.set("page", String(data.query.page));
+    if (semanticRecall.query) params.set("recall", semanticRecall.query);
 
     for (const [key, value] of Object.entries(updates)) {
       if (
@@ -249,6 +268,13 @@ export function LifelogDashboard({
     const formData = new FormData(event.currentTarget);
     const q = String(formData.get("q") ?? "").trim();
     navigateWith({ q: q || null, page: "1" });
+  }
+
+  function handleSemanticRecallSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const recall = String(formData.get("recall") ?? "").trim();
+    navigateWith({ recall: recall || null });
   }
 
   const currentFromQuery = buildQueryString({});
@@ -337,8 +363,8 @@ export function LifelogDashboard({
 
     setRecallAnswer(
       data.conversations.length > 0
-        ? `I found ${openTaskCount} open action items across ${data.conversations.length} imported conversations connected to "${trimmed}".`
-        : `No imported conversations are available for "${trimmed}" yet. Run a manual sync to backfill Fieldy data.`,
+        ? `Preview: ${openTaskCount} open action items across ${data.conversations.length} imported conversations connected to "${trimmed}".`
+        : `Preview: no imported conversations are available for "${trimmed}" yet. Run a manual sync to backfill Fieldy data.`,
     );
     setChatInput("");
   }
@@ -617,29 +643,80 @@ export function LifelogDashboard({
               </div>
             </section>
 
+            <section className="rail-panel semantic-recall-panel">
+              <div className="rail-header">
+                <h2>Semantic recall</h2>
+                <span>{semanticRecall.results.length}</span>
+              </div>
+              <form className="semantic-recall-form" onSubmit={handleSemanticRecallSubmit}>
+                <Search aria-hidden="true" size={18} />
+                <input
+                  aria-label="Semantic recall search"
+                  defaultValue={semanticRecall.query}
+                  key={semanticRecall.query}
+                  name="recall"
+                  placeholder="Find memories by meaning..."
+                  type="search"
+                />
+                <button disabled={isNavigating} type="submit">
+                  Search
+                </button>
+              </form>
+              <form action={embedAction}>
+                <button
+                  className="embed-button"
+                  disabled={isEmbedPending}
+                  type="submit"
+                >
+                  <Sparkles aria-hidden="true" size={17} />
+                  <span>{isEmbedPending ? "Embedding..." : "Embed conversations"}</span>
+                </button>
+              </form>
+              {embedState.message ? (
+                <p className={`sync-action-message sync-action-${embedState.status}`}>
+                  {embedState.message}
+                </p>
+              ) : null}
+              <div className="semantic-recall-results">
+                {semanticRecall.results.map((result) => (
+                  <Link
+                    className="semantic-recall-result"
+                    href={`/conversations/${result.id}${
+                      currentFromQuery ? `?from=${encodeURIComponent(currentFromQuery)}` : ""
+                    }`}
+                    key={result.id}
+                  >
+                    <strong>{result.title}</strong>
+                    <span>{result.summary}</span>
+                    <em>{Math.round(result.similarity * 100)}% similarity</em>
+                  </Link>
+                ))}
+              </div>
+            </section>
+
             <section className="rail-panel recall-panel">
               <div className="rail-header">
                 <h2>
                   <Sparkles aria-hidden="true" size={18} />
-                  Recall Chat
+                  Recall preview
                 </h2>
                 <button aria-label="Refresh recall" type="button">
                   <RefreshCcw aria-hidden="true" size={16} />
                 </button>
               </div>
               <div className="chat-thread">
-                <p className="chat-bubble user">Ask what you promised last week</p>
+                <p className="chat-bubble user">Promise from last week</p>
                 <p className="chat-bubble assistant">{recallAnswer}</p>
               </div>
               <form className="chat-form" onSubmit={handleRecallSubmit}>
                 <input
-                  aria-label="Ask anything about your conversations"
+                  aria-label="Preview a recall query"
                   onChange={(event) => setChatInput(event.target.value)}
-                  placeholder="Ask anything about your conversations..."
+                  placeholder="Preview a recall summary..."
                   type="text"
                   value={chatInput}
                 />
-                <button aria-label="Send recall query" type="submit">
+                <button aria-label="Preview recall query" type="submit">
                   <SendHorizontal aria-hidden="true" size={19} />
                 </button>
               </form>
