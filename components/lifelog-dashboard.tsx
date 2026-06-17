@@ -178,20 +178,26 @@ export function LifelogDashboard({ data }: { data: DashboardData }) {
   const hasImportedConversations = data.conversations.length > 0;
   const hasFilteredConversations = visibleConversations.length > 0;
   const openTaskCount = data.openTaskCount;
-  const todayConversationCount = conversations.filter(
-    (conversation) => conversation.day === "today",
-  ).length;
-  const keywordCounts = data.conversations
-    .flatMap((conversation) => conversation.keywords)
-    .reduce((counts, keyword) => {
-      counts.set(keyword, (counts.get(keyword) ?? 0) + 1);
-      return counts;
-    }, new Map<string, number>());
-  const keywordRows = [...keywordCounts]
-    .sort(([, firstCount], [, secondCount]) => secondCount - firstCount)
-    .slice(0, 5);
-  const keywordCount = keywordCounts.size;
-  const keywordMax = Math.max(...keywordRows.map(([, count]) => count), 1);
+  const { todayConversationCount, keywordRows, keywordCount, keywordMax } = useMemo(() => {
+    const keywordCounts = data.conversations
+      .flatMap((conversation) => conversation.keywords)
+      .reduce((counts, keyword) => {
+        counts.set(keyword, (counts.get(keyword) ?? 0) + 1);
+        return counts;
+      }, new Map<string, number>());
+    const keywordRowsValue = [...keywordCounts]
+      .sort(([, firstCount], [, secondCount]) => secondCount - firstCount)
+      .slice(0, 5);
+
+    return {
+      todayConversationCount: conversations.filter(
+        (conversation) => conversation.day === "today",
+      ).length,
+      keywordRows: keywordRowsValue,
+      keywordCount: keywordCounts.size,
+      keywordMax: Math.max(...keywordRowsValue.map(([, count]) => count), 1),
+    };
+  }, [conversations, data.conversations]);
   const currentDate = new Date();
   const yesterdayDate = new Date(currentDate);
   yesterdayDate.setDate(currentDate.getDate() - 1);

@@ -44,3 +44,11 @@ test("password sign-in clears non-owner sessions", () => {
   assert.notEqual(signOutIndex, -1);
   assert.notEqual(redirectIndex, -1);
 });
+
+test("password sign-in preserves raw password input", () => {
+  const source = readFileSync("app/auth/actions.ts", "utf8");
+
+  assert.match(source, /function readRawFormString/);
+  assert.match(source, /const password = readRawFormString\(formData, "password"\)/);
+  assert.doesNotMatch(source, /const password = readFormString\(formData, "password"\)/);
+});

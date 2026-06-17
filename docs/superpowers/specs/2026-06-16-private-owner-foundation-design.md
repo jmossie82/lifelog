@@ -48,7 +48,9 @@ Service-role access is limited to server-only ingestion code. Browser code never
 
 ## Data Model
 
-Phase A adds four core tables: `conversations`, `transcriptions`, `tasks`, and `sync_runs`.
+Phase A adds five core tables: `lifelog_owner_config`, `conversations`, `transcriptions`, `tasks`, and `sync_runs`.
+
+`lifelog_owner_config` stores the ownership singleton that anchors the private-owner RLS model. It stores `id`, `user_id`, and local timestamps, with a single-row check requiring `id = 1`. After applying the migration, setup must explicitly insert or update this row with the same Supabase Auth user id configured in `LIFELOG_OWNER_USER_ID`.
 
 `conversations` is the anchor table. It stores `id`, `user_id`, `fieldy_id`, title, summary, content, keywords, started and ended timestamps, timestamps for local creation/update, and a minimized `fieldy_metadata` JSON object for non-sensitive Fieldy fields not normalized yet. The idempotency constraint is unique `(user_id, fieldy_id)`.
 
@@ -58,7 +60,7 @@ Phase A adds four core tables: `conversations`, `transcriptions`, `tasks`, and `
 
 `sync_runs` records operational ingestion state. It stores `id`, `user_id`, source (`webhook` or `backfill`), status (`running`, `succeeded`, or `failed`), started and finished timestamps, imported count, and a short non-sensitive error message.
 
-For each owner-scoped table, enable RLS and create authenticated owner policies. Read policies should use `using ((select auth.uid()) = user_id)`. Any authenticated insert/update policies must also use `with check ((select auth.uid()) = user_id)` so users cannot write rows for another owner. Service-role ingestion bypasses these policies only through the separate server-only admin client, and it must always set `user_id` to `LIFELOG_OWNER_USER_ID`; it must not infer ownership from payload content in Phase A.
+For each owner-scoped table, enable RLS and create authenticated owner read policies. Read policies should use `public.is_lifelog_owner(user_id)`, where the security-definer helper requires `(select auth.uid()) = user_id` and a matching row in `lifelog_owner_config`. Authenticated browser clients do not receive insert or update policies for owner data tables. Service-role ingestion bypasses these policies only through the separate server-only admin client, and it must always set `user_id` to `LIFELOG_OWNER_USER_ID`; it must not infer ownership from payload content in Phase A.
 
 Do not store full raw Fieldy payloads by default because they can include transcript text, summaries, speaker data, quotes, location, and calendar metadata. If debugging requires payload retention, store only a redacted/minimized JSON subset, protect it with RLS, and define an explicit retention/deletion policy before implementation.
 
@@ -130,6 +132,8 @@ Input and configuration failures are explicit:
 - Missing required server configuration returns `500` with non-secret error text.
 
 Operational errors are recorded in `sync_runs.error_message` with short, non-sensitive messages such as `Fieldy API request failed with 429` or `LIFELOG_OWNER_USER_ID is not configured`. Raw payload content, API keys, tokens, transcript text, and full stack traces are not stored in `error_message`.
+
+Service-role ingestion and backfill operations do not rely on RLS policy enforcement for ownership. The server-only admin client bypasses RLS and explicitly writes `user_id = LIFELOG_OWNER_USER_ID` in normalized rows and sync runs. RLS ownership validation through `is_lifelog_owner()` applies to authenticated user queries, where `auth.uid()` is present and can be compared with the singleton owner config row.
 
 ## Testing
 

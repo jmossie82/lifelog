@@ -257,6 +257,37 @@ test("tasks passed to ingestion are scoped to the conversation memory id", async
   ]);
 });
 
+test("tasks are indexed once by memory id for each conversation", async () => {
+  const harness = createHarness({
+    conversations: [
+      boundedConversation,
+      {
+        id: "conversation-2",
+        startTime: "2026-06-15T11:00:00.000Z",
+        endTime: "2026-06-15T11:30:00.000Z",
+      },
+    ],
+    tasks: [
+      { title: "First task", status: "new", memoryId: "conversation-1" },
+      { title: "Second task", status: "new", memoryId: "conversation-2" },
+      { title: "Unscoped task", status: "new", memoryId: null },
+    ],
+    ingestResults: [
+      { conversationCount: 1, transcriptionCount: 1, taskCount: 1 },
+      { conversationCount: 1, transcriptionCount: 1, taskCount: 1 },
+    ],
+  });
+
+  await harness.run();
+
+  assert.deepEqual(
+    harness.ingestCalls.map((call) =>
+      (call as { tasks: Array<{ title: string }> }).tasks.map((task) => task.title),
+    ),
+    [["First task"], ["Second task"]],
+  );
+});
+
 test("dashboard is revalidated on success and recorded failure", async () => {
   const success = createHarness();
   const failure = createHarness({

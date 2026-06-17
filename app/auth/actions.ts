@@ -9,9 +9,14 @@ function readFormString(formData: FormData, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function readRawFormString(formData: FormData, key: string) {
+  const value = formData.get(key);
+  return typeof value === "string" ? value : "";
+}
+
 export async function signInWithPassword(formData: FormData) {
   const email = readFormString(formData, "email");
-  const password = readFormString(formData, "password");
+  const password = readRawFormString(formData, "password");
 
   if (!email || !password) {
     redirect("/login?error=missing_credentials");

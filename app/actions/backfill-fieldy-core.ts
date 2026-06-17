@@ -180,8 +180,18 @@ function getConversationTranscriptionRange(conversation: FieldyConversation) {
   };
 }
 
-function getConversationTasks(tasks: FieldyTask[], conversationId: string) {
-  return tasks.filter((task) => task.memoryId === conversationId);
+function groupTasksByMemoryId(tasks: FieldyTask[]) {
+  const grouped = new Map<string, FieldyTask[]>();
+
+  for (const task of tasks) {
+    if (!task.memoryId) continue;
+
+    const taskGroup = grouped.get(task.memoryId) ?? [];
+    taskGroup.push(task);
+    grouped.set(task.memoryId, taskGroup);
+  }
+
+  return grouped;
 }
 
 export async function runFieldyBackfill<TSupabase>({
@@ -221,6 +231,7 @@ export async function runFieldyBackfill<TSupabase>({
       mode: "intersects-range",
     });
     const tasks = await fieldyClient.fetchTasks();
+    const tasksByMemoryId = groupTasksByMemoryId(tasks);
     const ingestion = createIngestionService({ supabase, ownerUserId });
 
     for (const conversation of conversations) {
@@ -230,7 +241,7 @@ export async function runFieldyBackfill<TSupabase>({
       const result = await ingestion.ingestConversationSet({
         conversation,
         transcriptions,
-        tasks: getConversationTasks(tasks, conversation.id),
+        tasks: tasksByMemoryId.get(conversation.id) ?? [],
       });
       importedCount +=
         result.conversationCount + result.transcriptionCount + result.taskCount;
