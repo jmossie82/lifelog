@@ -12,11 +12,14 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 function formatDateTime(value: string | null, displayTimeZone: string) {
   if (!value) return "No time";
 
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "Invalid time";
+
   return new Intl.DateTimeFormat("en-US", {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: displayTimeZone,
-  }).format(new Date(value));
+  }).format(parsed);
 }
 
 function formatDuration(detail: ConversationDetail) {

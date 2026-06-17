@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
+  DASHBOARD_MAX_PAGE,
   DASHBOARD_PAGE_SIZE,
   buildConversationSearchFilter,
   getDashboardRangeBounds,
@@ -19,6 +20,7 @@ const DASHBOARD_CONVERSATION_TYPES = [
   "task",
   "mention",
 ] as const;
+const SYNC_DISPLAY_ERROR_MAX_LENGTH = 160;
 
 export type DashboardConversationType =
   (typeof DASHBOARD_CONVERSATION_TYPES)[number];
@@ -89,6 +91,14 @@ export type DashboardData = {
   hasMoreConversations: boolean;
 };
 
+function truncateSyncDisplayError(message: string) {
+  if (message.length <= SYNC_DISPLAY_ERROR_MAX_LENGTH) {
+    return message;
+  }
+
+  return `${message.slice(0, SYNC_DISPLAY_ERROR_MAX_LENGTH - 3)}...`;
+}
+
 function toSafeSyncDisplayError(errorMessage: string | null) {
   if (!errorMessage) return null;
 
@@ -105,10 +115,12 @@ function toSafeSyncDisplayError(errorMessage: string | null) {
     allowedMessages.has(errorMessage) ||
     /^Fieldy API request failed with \d+$/.test(errorMessage)
   ) {
-    return errorMessage;
+    return truncateSyncDisplayError(errorMessage);
   }
 
-  return "Sync failed. Check Fieldy configuration and try again.";
+  return truncateSyncDisplayError(
+    "Sync failed. Check Fieldy configuration and try again.",
+  );
 }
 
 function mapSyncRunSummary(
@@ -170,6 +182,7 @@ export function mapDashboardData({
   }));
   const conversationCount = totalConversationCount ?? mappedConversations.length;
   const importedCount = importedConversationCount ?? conversationCount;
+  const reachableConversationCount = query.page * DASHBOARD_PAGE_SIZE;
 
   return {
     conversations: mappedConversations,
@@ -188,7 +201,8 @@ export function mapDashboardData({
     importedConversationCount: importedCount,
     totalConversationCount: conversationCount,
     shownConversationCount: mappedConversations.length,
-    hasMoreConversations: mappedConversations.length < conversationCount,
+    hasMoreConversations:
+      query.page < DASHBOARD_MAX_PAGE && reachableConversationCount < conversationCount,
   };
 }
 

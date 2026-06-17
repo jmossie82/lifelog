@@ -22,3 +22,10 @@ test("conversation detail route validates UUIDs and uses notFound for misses", (
   assert.match(source, /notFound\(\)/);
   assert.match(source, /getConversationDetail/);
 });
+
+test("conversation detail route guards malformed timestamps before formatting", () => {
+  assert.match(source, /const parsed = new Date\(value\)/);
+  assert.match(source, /Number\.isFinite\(parsed\.getTime\(\)\)/);
+  assert.match(source, /Invalid time/);
+  assert.match(source, /\.format\(parsed\)/);
+});

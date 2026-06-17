@@ -223,7 +223,11 @@ export function LifelogDashboard({
     if (data.query.page > 1) params.set("page", String(data.query.page));
 
     for (const [key, value] of Object.entries(updates)) {
-      if (!value || value === "all" || (key === "page" && value === "1")) {
+      if (
+        !value ||
+        ((key === "type" || key === "range") && value === "all") ||
+        (key === "page" && value === "1")
+      ) {
         params.delete(key);
       } else {
         params.set(key, value);

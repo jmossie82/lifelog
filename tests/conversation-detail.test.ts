@@ -9,6 +9,7 @@ import {
 
 test("isUuid accepts canonical UUIDs only", () => {
   assert.equal(isUuid("00000000-0000-4000-8000-000000000001"), true);
+  assert.equal(isUuid("00000000-0000-4000-8000-ABCDEF000001"), true);
   assert.equal(isUuid("not-a-uuid"), false);
   assert.equal(isUuid("00000000-0000-4000-8000-000000000001/sneaky"), false);
 });

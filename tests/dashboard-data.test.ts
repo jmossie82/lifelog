@@ -137,6 +137,21 @@ test("mapSyncRunDisplay allowlists safe sync errors and redacts unsafe display t
   }
 });
 
+test("mapSyncRunDisplay truncates safe display errors", () => {
+  const display = mapSyncRunDisplay({
+    id: "sync-1",
+    source: "backfill",
+    status: "failed",
+    started_at: "2026-06-16T16:00:00.000Z",
+    finished_at: "2026-06-16T16:01:00.000Z",
+    imported_count: 0,
+    error_message: `Fieldy API request failed with ${"9".repeat(200)}`,
+  });
+
+  assert.equal(display?.displayError?.length, 160);
+  assert.equal(display?.displayError?.endsWith("..."), true);
+});
+
 test("mapDashboardData counts only explicit open task statuses", () => {
   const data = mapDashboardData({
     conversations: [],
@@ -303,6 +318,18 @@ test("mapDashboardData defaults unsafe or unknown Fieldy types to conversation",
     data.conversations.map((conversation) => conversation.type),
     ["conversation", "conversation", "conversation", "conversation"],
   );
+});
+
+test("mapDashboardData stops pagination at the reachable page cap", () => {
+  const data = mapDashboardData({
+    conversations: [],
+    tasks: [],
+    syncRuns: [],
+    query: { q: "", type: "all", range: "all", page: 20 },
+    totalConversationCount: 501,
+  });
+
+  assert.equal(data.hasMoreConversations, false);
 });
 
 test("getDashboardData uses exact open task count beyond limited task rows", async () => {
@@ -473,7 +500,7 @@ function createRecordingDashboardClient({
 test("getDashboardData applies search type range ordering and cumulative range before returning pagination metadata", async () => {
   const calls: RecordingCall[] = [];
   const responses = {
-    conversations: { data: [], count: 48, error: null },
+    conversations: { data: [], count: 60, error: null },
     importedConversationCount: { data: null, count: 71, error: null },
     tasks: { data: [], error: null },
     openTaskCount: { data: null, count: 0, error: null },
@@ -489,7 +516,7 @@ test("getDashboardData applies search type range ordering and cumulative range b
     now: new Date("2026-06-17T15:30:00.000Z"),
   });
 
-  assert.equal(data.totalConversationCount, 48);
+  assert.equal(data.totalConversationCount, 60);
   assert.equal(data.importedConversationCount, 71);
   assert.equal(data.shownConversationCount, 0);
   assert.equal(data.hasMoreConversations, true);
@@ -589,6 +616,38 @@ test("getDashboardData applies conversation fallback type filter before paginati
       .filter((call) => call.table === "conversations" && call.method === "or")
       .map((call) => call.args),
     [
+      [
+        "fieldy_metadata->>type.is.null,fieldy_metadata->>type.eq.conversation,fieldy_metadata->>type.not.in.(note,task,mention)",
+      ],
+    ],
+  );
+});
+
+test("getDashboardData ANDs search with the conversation fallback type group", async () => {
+  const calls: RecordingCall[] = [];
+  const responses = {
+    conversations: { data: [], count: 0, error: null },
+    importedConversationCount: { data: null, count: 0, error: null },
+    tasks: { data: [], error: null },
+    openTaskCount: { data: null, count: 0, error: null },
+    sync_runs: { data: [], error: null },
+  };
+
+  const client = createRecordingDashboardClient({ calls, responses });
+
+  await getDashboardData(client as never, {
+    userId: "00000000-0000-4000-8000-000000000001",
+    query: { q: "budget", type: "conversation", range: "all", page: 1 },
+    displayTimeZone: "America/Chicago",
+    now: new Date("2026-06-17T15:30:00.000Z"),
+  });
+
+  assert.deepEqual(
+    calls
+      .filter((call) => call.table === "conversations" && call.method === "or")
+      .map((call) => call.args),
+    [
+      ["title.ilike.*budget*,summary.ilike.*budget*,content.ilike.*budget*"],
       [
         "fieldy_metadata->>type.is.null,fieldy_metadata->>type.eq.conversation,fieldy_metadata->>type.not.in.(note,task,mention)",
       ],
