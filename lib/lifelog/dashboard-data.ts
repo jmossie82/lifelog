@@ -51,6 +51,14 @@ export type DashboardSyncRunRow = Pick<
   | "error_message"
 >;
 
+export type DashboardSyncDisplay = {
+  source: DashboardSyncRunRow["source"];
+  status: DashboardSyncRunRow["status"];
+  importedCount: number;
+  finishedAt: string | null;
+  displayError: string | null;
+};
+
 export type DashboardData = {
   conversations: Array<{
     id: string;
@@ -71,11 +79,48 @@ export type DashboardData = {
   }>;
   openTaskCount: number;
   lastSync: DashboardSyncRunRow | null;
+  lastSyncDisplay: DashboardSyncDisplay | null;
   query: DashboardQuery;
   totalConversationCount: number;
   shownConversationCount: number;
   hasMoreConversations: boolean;
 };
+
+function toSafeSyncDisplayError(errorMessage: string | null) {
+  if (!errorMessage) return null;
+
+  const allowedMessages = new Set([
+    "Fieldy backfill failed",
+    "Fieldy webhook reconciliation failed",
+    "No canonical Fieldy conversation matched webhook date",
+    "No canonical Fieldy transcription matched webhook text",
+    "Multiple canonical Fieldy conversations matched webhook text",
+    "Invalid Fieldy webhook date",
+  ]);
+
+  if (
+    allowedMessages.has(errorMessage) ||
+    /^Fieldy API request failed with \d+$/.test(errorMessage)
+  ) {
+    return errorMessage;
+  }
+
+  return "Sync failed. Check Fieldy configuration and try again.";
+}
+
+export function mapSyncRunDisplay(
+  syncRun: DashboardSyncRunRow | null,
+): DashboardSyncDisplay | null {
+  if (!syncRun) return null;
+
+  return {
+    source: syncRun.source,
+    status: syncRun.status,
+    importedCount: syncRun.imported_count,
+    finishedAt: syncRun.finished_at,
+    displayError: toSafeSyncDisplayError(syncRun.error_message),
+  };
+}
 
 export function mapDashboardData({
   conversations,
@@ -117,6 +162,7 @@ export function mapDashboardData({
     openTaskCount:
       openTaskCount ?? tasks.filter((task) => openStatuses.has(task.status)).length,
     lastSync: syncRuns[0] ?? null,
+    lastSyncDisplay: mapSyncRunDisplay(syncRuns[0] ?? null),
     query,
     totalConversationCount: conversationCount,
     shownConversationCount: mappedConversations.length,

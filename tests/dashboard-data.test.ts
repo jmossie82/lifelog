@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   getDashboardData,
   mapDashboardData,
+  mapSyncRunDisplay,
 } from "../lib/lifelog/dashboard-data.ts";
 
 test("mapDashboardData groups conversations and counts open tasks", () => {
@@ -57,6 +58,65 @@ test("mapDashboardData handles empty imported state", () => {
   assert.equal(data.conversations.length, 0);
   assert.equal(data.openTaskCount, 0);
   assert.equal(data.lastSync, null);
+});
+
+test("mapDashboardData exposes safe sync display fields", () => {
+  const data = mapDashboardData({
+    conversations: [],
+    tasks: [],
+    syncRuns: [
+      {
+        id: "sync-1",
+        source: "backfill",
+        status: "failed",
+        started_at: "2026-06-16T16:00:00.000Z",
+        finished_at: "2026-06-16T16:01:00.000Z",
+        imported_count: 0,
+        error_message:
+          "sk-fieldy-secret owner 00000000-0000-4000-8000-000000000001 transcript Alice said call Fieldy conversation fld_1234567890",
+      },
+    ],
+  });
+
+  assert.deepEqual(data.lastSyncDisplay, {
+    source: "backfill",
+    status: "failed",
+    importedCount: 0,
+    finishedAt: "2026-06-16T16:01:00.000Z",
+    displayError: "Sync failed. Check Fieldy configuration and try again.",
+  });
+});
+
+test("mapSyncRunDisplay allowlists safe sync errors and redacts unsafe display text", () => {
+  const cases = [
+    ["Fieldy backfill failed", "Fieldy backfill failed"],
+    ["Fieldy API request failed with 429", "Fieldy API request failed with 429"],
+    ["sk-fieldy-secret", "Sync failed. Check Fieldy configuration and try again."],
+    [
+      "00000000-0000-4000-8000-000000000001",
+      "Sync failed. Check Fieldy configuration and try again.",
+    ],
+    ["fld_1234567890", "Sync failed. Check Fieldy configuration and try again."],
+    [
+      "Alice said call me back after the appointment transcript text",
+      "Sync failed. Check Fieldy configuration and try again.",
+    ],
+  ];
+
+  for (const [errorMessage, expected] of cases) {
+    assert.equal(
+      mapSyncRunDisplay({
+        id: "sync-1",
+        source: "backfill",
+        status: "failed",
+        started_at: "2026-06-16T16:00:00.000Z",
+        finished_at: "2026-06-16T16:01:00.000Z",
+        imported_count: 0,
+        error_message: errorMessage,
+      })?.displayError,
+      expected,
+    );
+  }
 });
 
 test("mapDashboardData counts only explicit open task statuses", () => {
