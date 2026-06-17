@@ -2780,11 +2780,13 @@ Create the owner user in Supabase Auth, then set `LIFELOG_OWNER_USER_ID` to that
 
 Create a Fieldy API key from Fieldy Developer Settings and set `FIELDY_API_KEY`.
 
-Configure the Fieldy webhook URL with the app-owned secret:
+Configure the Fieldy webhook URL without secrets in the URL:
 
 ```text
-https://your-app.example.com/api/webhooks/fieldy?secret=FIELDY_WEBHOOK_SECRET_VALUE
+https://your-app.example.com/api/webhooks/fieldy
 ```
+
+Configure the webhook request header `X-Fieldy-Webhook-Secret` with the value of `FIELDY_WEBHOOK_SECRET`.
 
 Fieldy public webhook docs currently describe completed transcription payloads. The app uses each webhook as a reconciliation trigger and fetches canonical conversation/transcription data from the Fieldy Public API.
 
