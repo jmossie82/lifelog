@@ -7,7 +7,7 @@ const source = readFileSync("components/lifelog-dashboard.tsx", "utf8");
 test("dashboard distinguishes imported-empty from filtered-empty timeline states", () => {
   assert.match(source, /data\.conversations\.length === 0/);
   assert.match(source, /No Fieldy conversations imported yet/);
-  assert.match(source, /No items in this view yet/);
+  assert.match(source, /No matching conversations/);
   assert.doesNotMatch(
     source,
     /visibleConversations\.length === 0 \? \(\s*<section className="empty-state">/,
@@ -43,6 +43,35 @@ test("dashboard uses safe mapped sync errors", () => {
 });
 
 test("dashboard links conversation rows to detail routes with current query", () => {
+  assert.match(source, /href=\{conversation\.href\}/);
+  assert.match(source, /\/conversations\/\$\{conversation\.id\}/);
+  assert.match(source, /from/);
+});
+
+test("dashboard uses URL-backed search and filter controls", () => {
+  assert.match(source, /useRouter/);
+  assert.match(source, /usePathname/);
+  assert.match(source, /URLSearchParams/);
+  assert.match(source, /name="q"/);
+  assert.match(source, /data\.query\.q/);
+  assert.match(source, /type=conversation/);
+  assert.doesNotMatch(source, /useState<ConversationFilterTab>\("All"\)/);
+});
+
+test("dashboard renders sync activity panel with action state", () => {
+  assert.match(source, /useActionState/);
+  assert.match(source, /initialBackfillActionState/);
+  assert.match(source, /lastSyncDisplay/);
+  assert.match(source, /sync-activity-panel/);
+});
+
+test("dashboard distinguishes active-filter empty results from imported-empty results", () => {
+  assert.match(source, /hasActiveFilters/);
+  assert.match(source, /data\.conversations\.length === 0 && !hasActiveFilters/);
+  assert.match(source, /hasActiveFilters \|\| hasImportedConversations/);
+});
+
+test("dashboard links conversations and preserves from query", () => {
   assert.match(source, /href=\{conversation\.href\}/);
   assert.match(source, /\/conversations\/\$\{conversation\.id\}/);
   assert.match(source, /from/);
