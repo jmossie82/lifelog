@@ -9,6 +9,15 @@ const migration = readFileSync(
 
 const normalizedMigration = migration.replace(/\s+/g, " ").trim();
 
+const semanticRecallMigration = readFileSync(
+  "supabase/migrations/20260617000000_semantic_recall_v1.sql",
+  "utf8",
+);
+
+const normalizedSemanticRecallMigration = semanticRecallMigration
+  .replace(/\s+/g, " ")
+  .trim();
+
 function assertOwnerReadPolicy(table: string) {
   const policyTableName = table.replace("_", " ");
   const basePolicyPattern = `create policy "Owner can read ${policyTableName}" on public\\.${table} for select to authenticated`;
@@ -89,4 +98,64 @@ test("migration enforces owner-matched conversation relationships", () => {
 test("migration avoids raw payload columns", () => {
   assert.doesNotMatch(migration, /raw_payload/);
   assert.match(migration, /fieldy_metadata jsonb not null default '\{\}'::jsonb/);
+});
+
+test("semantic recall migration enables pgvector and conversation embeddings", () => {
+  assert.match(
+    normalizedSemanticRecallMigration,
+    /create extension if not exists vector with schema extensions;/,
+  );
+  assert.match(
+    normalizedSemanticRecallMigration,
+    /alter table public\.conversations add column embedding extensions\.vector\(1536\)/,
+  );
+  assert.match(
+    normalizedSemanticRecallMigration,
+    /add column embedding_model text/,
+  );
+  assert.match(
+    normalizedSemanticRecallMigration,
+    /add column embedding_input_hash text/,
+  );
+  assert.match(
+    normalizedSemanticRecallMigration,
+    /add column embedded_at timestamptz/,
+  );
+});
+
+test("semantic recall match rpc keeps results owner scoped", () => {
+  assert.match(
+    normalizedSemanticRecallMigration,
+    /create or replace function public\.match_conversations/,
+  );
+  assert.match(
+    normalizedSemanticRecallMigration,
+    /query_embedding extensions\.vector\(1536\)/,
+  );
+  assert.match(normalizedSemanticRecallMigration, /match_count integer/);
+  assert.match(normalizedSemanticRecallMigration, /match_threshold double precision/);
+  assert.match(
+    normalizedSemanticRecallMigration,
+    /where conversations\.user_id = \(select auth\.uid\(\)\)/,
+  );
+  assert.match(
+    normalizedSemanticRecallMigration,
+    /and public\.is_lifelog_owner\(conversations\.user_id\)/,
+  );
+  assert.match(
+    normalizedSemanticRecallMigration,
+    /1 - \(conversations\.embedding OPERATOR\(extensions\.<=>\) query_embedding\) as similarity/,
+  );
+  assert.match(
+    normalizedSemanticRecallMigration,
+    /revoke all on function public\.match_conversations\( extensions\.vector\(1536\), integer, double precision \) from public;/,
+  );
+  assert.match(
+    normalizedSemanticRecallMigration,
+    /grant execute on function public\.match_conversations/,
+  );
+  assert.doesNotMatch(
+    normalizedSemanticRecallMigration,
+    /grant execute on function public\.match_conversations[^;]+to public;/,
+  );
 });
