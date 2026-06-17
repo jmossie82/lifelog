@@ -17,6 +17,7 @@ Before implementation, refresh current docs with Context7 because this work touc
 ```bash
 npx ctx7@latest library Next.js "Next.js App Router searchParams params Promise useActionState server action form pending state"
 npx ctx7@latest docs /vercel/next.js "Next.js App Router searchParams params Promise useActionState server action form pending state"
+npx ctx7@latest library Supabase "supabase-js PostgREST ilike or filter range count exact maybeSingle TypeScript"
 npx ctx7@latest docs /supabase/supabase "supabase-js PostgREST ilike or filter range count exact maybeSingle TypeScript"
 ```
 
@@ -27,6 +28,7 @@ Expected: commands return current docs. If quota fails, stop and report the quot
 - Create `lib/lifelog/dashboard-query.ts`: pure URL param normalization, date range calculation, PostgREST search filter construction, page constants, and filter metadata.
 - Modify `lib/lifelog/dashboard-data.ts`: accept normalized dashboard query options, apply server-backed search/type/range/pagination in Supabase, return pagination metadata, and map sync runs through a safe display boundary.
 - Modify `app/page.tsx`: accept async Next 16 `searchParams`, normalize them once, pass query state and dashboard data to the dashboard component.
+- Create `lib/lifelog/backfill-action-state.ts`: shared action-state type and initial state for the sync form. Keep this out of `"use server"` files because Next server-action modules may only export async actions.
 - Modify `app/actions/backfill-fieldy.ts`: expose `BackfillActionState` and adapt `backfillFieldy` to the `useActionState` signature.
 - Modify `components/lifelog-dashboard.tsx`: replace local-only filters/search/sync UI with URL-backed controls, a sidebar sync activity panel, conversation links, and cumulative load-more.
 - Create `lib/lifelog/conversation-detail.ts`: authenticated-read mapping for one conversation, its transcript rows, and linked tasks.
@@ -203,15 +205,19 @@ test("buildConversationSearchFilter returns null for empty search", () => {
   assert.equal(buildConversationSearchFilter("   "), null);
 });
 
-test("buildConversationSearchFilter escapes PostgREST and LIKE-sensitive input", () => {
+test("buildConversationSearchFilter strips PostgREST grammar characters and LIKE wildcards", () => {
   const filter = buildConversationSearchFilter(
-    String.raw`Meeting, owner.id:(abc)%_ "quoted" \ path`,
+    String.raw`Meeting, owner.id:(abc)%_ * "quoted" \ path`,
   );
 
   assert.equal(
     filter,
-    String.raw`title.ilike.*Meeting\, owner\.id\:\(abc\)\%\_ \"quoted\" \\ path*,summary.ilike.*Meeting\, owner\.id\:\(abc\)\%\_ \"quoted\" \\ path*,content.ilike.*Meeting\, owner\.id\:\(abc\)\%\_ \"quoted\" \\ path*`,
+    "title.ilike.*Meeting owner id abc quoted path*,summary.ilike.*Meeting owner id abc quoted path*,content.ilike.*Meeting owner id abc quoted path*",
   );
+});
+
+test("buildConversationSearchFilter returns null when input has only filter grammar", () => {
+  assert.equal(buildConversationSearchFilter(String.raw`,.:()"\\%_*`), null);
 });
 
 test("buildConversationSearchFilter caps very long input", () => {
@@ -238,20 +244,25 @@ Expected: FAIL with `buildConversationSearchFilter is not a function`.
 Append to `lib/lifelog/dashboard-query.ts`:
 
 ```ts
-const POSTGREST_FILTER_SPECIAL_CHARS = /[\\,.:()"_%]/g;
+const POSTGREST_FILTER_GRAMMAR_OR_WILDCARDS = /[\\,.:()"%_*]/g;
 
-function escapePostgrestFilterValue(value: string) {
-  return value.replace(POSTGREST_FILTER_SPECIAL_CHARS, (character) => `\\${character}`);
+function normalizePostgrestIlikePattern(value: string) {
+  return value
+    .replace(POSTGREST_FILTER_GRAMMAR_OR_WILDCARDS, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function buildConversationSearchFilter(q: string) {
-  const normalized = q.trim().slice(0, DASHBOARD_MAX_SEARCH_LENGTH);
+  const normalized = normalizePostgrestIlikePattern(q).slice(
+    0,
+    DASHBOARD_MAX_SEARCH_LENGTH,
+  );
   if (!normalized) {
     return null;
   }
 
-  const escaped = escapePostgrestFilterValue(normalized);
-  const pattern = `*${escaped}*`;
+  const pattern = `*${normalized}*`;
 
   return [
     `title.ilike.${pattern}`,
@@ -427,6 +438,7 @@ test("getDashboardData applies search type range ordering and cumulative range b
   const client = createRecordingDashboardClient({ calls, responses });
 
   const data = await getDashboardData(client as never, {
+    userId: "00000000-0000-4000-8000-000000000001",
     query: { q: "budget", type: "note", range: "today", page: 2 },
     displayTimeZone: "America/Chicago",
     now: new Date("2026-06-17T15:30:00.000Z"),
@@ -447,6 +459,7 @@ test("getDashboardData applies search type range ordering and cumulative range b
           { count: "exact" },
         ],
       ],
+      ["eq", ["user_id", "00000000-0000-4000-8000-000000000001"]],
       ["or", ["title.ilike.*budget*,summary.ilike.*budget*,content.ilike.*budget*"]],
       ["filter", ["fieldy_metadata->>type", "eq", "note"]],
       ["gte", ["started_at", "2026-06-17T05:00:00.000Z"]],
@@ -454,6 +467,36 @@ test("getDashboardData applies search type range ordering and cumulative range b
       ["order", ["started_at", { ascending: false, nullsFirst: false }]],
       ["order", ["id", { ascending: false }]],
       ["range", [0, 49]],
+    ],
+  );
+});
+
+test("getDashboardData applies conversation fallback type filter before pagination", async () => {
+  const calls: Array<{ table: string; method: string; args: unknown[] }> = [];
+  const responses = {
+    conversations: { data: [], count: 0, error: null },
+    tasks: { data: [], error: null },
+    openTaskCount: { data: null, count: 0, error: null },
+    sync_runs: { data: [], error: null },
+  };
+
+  const client = createRecordingDashboardClient({ calls, responses });
+
+  await getDashboardData(client as never, {
+    userId: "00000000-0000-4000-8000-000000000001",
+    query: { q: "", type: "conversation", range: "all", page: 1 },
+    displayTimeZone: "America/Chicago",
+    now: new Date("2026-06-17T15:30:00.000Z"),
+  });
+
+  assert.deepEqual(
+    calls
+      .filter((call) => call.table === "conversations" && call.method === "or")
+      .map((call) => call.args),
+    [
+      [
+        "fieldy_metadata->>type.is.null,fieldy_metadata->>type.eq.conversation,fieldy_metadata->>type.not.in.(note,task,mention)",
+      ],
     ],
   );
 });
@@ -478,6 +521,11 @@ function createRecordingDashboardClient({
         select(...args: unknown[]) {
           operations.push({ method: "select", args });
           calls.push({ table, method: "select", args });
+          return builder;
+        },
+        eq(...args: unknown[]) {
+          operations.push({ method: "eq", args });
+          calls.push({ table, method: "eq", args });
           return builder;
         },
         or(...args: unknown[]) {
@@ -628,6 +676,7 @@ Update `getDashboardData` in `lib/lifelog/dashboard-data.ts`:
 export async function getDashboardData(
   supabase: SupabaseClient<Database>,
   options: {
+    userId: string;
     query?: DashboardQuery;
     displayTimeZone?: string;
     now?: Date;
@@ -647,7 +696,8 @@ export async function getDashboardData(
     .select(
       "id, fieldy_id, title, summary, started_at, ended_at, keywords, fieldy_metadata",
       { count: "exact" },
-    );
+    )
+    .eq("user_id", options.userId);
 
   const searchFilter = buildConversationSearchFilter(query.q);
   if (searchFilter) {
@@ -681,17 +731,20 @@ export async function getDashboardData(
       supabase
         .from("tasks")
         .select("id, title, status, due_at, conversation_id")
+        .eq("user_id", options.userId)
         .order("created_at", { ascending: false })
         .limit(20),
       supabase
         .from("tasks")
         .select("id", { count: "exact", head: true })
+        .eq("user_id", options.userId)
         .in("status", [...OPEN_TASK_STATUSES]),
       supabase
         .from("sync_runs")
         .select(
           "id, source, status, started_at, finished_at, imported_count, error_message",
         )
+        .eq("user_id", options.userId)
         .order("started_at", { ascending: false })
         .limit(1),
     ]);
@@ -791,6 +844,7 @@ export default async function Home({
   const renderedAt = new Date();
   const dashboardQuery = normalizeDashboardQuery(await searchParams);
   const dashboardData = await getDashboardData(supabase, {
+    userId: user.id,
     query: dashboardQuery,
     displayTimeZone,
     now: renderedAt,
@@ -833,6 +887,7 @@ Expected: commit succeeds.
 
 **Files:**
 - Modify: `app/actions/backfill-fieldy.ts`
+- Create: `lib/lifelog/backfill-action-state.ts`
 - Modify: `lib/lifelog/dashboard-data.ts`
 - Modify: `tests/backfill-action-source.test.ts`
 - Modify: `tests/dashboard-data.test.ts`
@@ -842,12 +897,17 @@ Expected: commit succeeds.
 Append to `tests/backfill-action-source.test.ts`:
 
 ```ts
+const actionSource = readFileSync("app/actions/backfill-fieldy.ts", "utf8");
+const stateSource = readFileSync("lib/lifelog/backfill-action-state.ts", "utf8");
+
 test("backfill action exposes useActionState-compatible state", () => {
-  assert.match(source, /export type BackfillActionState/);
-  assert.match(source, /status: "idle" \| "success" \| "error"/);
-  assert.match(source, /backfillFieldy\(\s*_prevState: BackfillActionState,\s*_formData: FormData/);
-  assert.match(source, /return \{\s*status: "success"/);
-  assert.match(source, /return \{\s*status: "error"/);
+  assert.match(stateSource, /export type BackfillActionState/);
+  assert.match(stateSource, /status: "idle" \| "success" \| "error"/);
+  assert.match(stateSource, /export const initialBackfillActionState/);
+  assert.match(actionSource, /backfillFieldy\(\s*_prevStateOrFormData: BackfillActionState \| FormData,\s*_formData\?: FormData/);
+  assert.match(actionSource, /return \{\s*status: "success"/);
+  assert.match(actionSource, /return \{\s*status: "error"/);
+  assert.doesNotMatch(actionSource, /export const initialBackfillActionState/);
 });
 ```
 
@@ -861,7 +921,25 @@ node --test --experimental-strip-types tests/backfill-action-source.test.ts
 
 Expected: FAIL because `BackfillActionState` is not defined.
 
-- [ ] **Step 3: Update `backfillFieldy` to return action state**
+- [ ] **Step 3: Create shared action-state module**
+
+Create `lib/lifelog/backfill-action-state.ts`:
+
+```ts
+export type BackfillActionState = {
+  status: "idle" | "success" | "error";
+  message: string;
+  importedCount: number | null;
+};
+
+export const initialBackfillActionState: BackfillActionState = {
+  status: "idle",
+  message: "",
+  importedCount: null,
+};
+```
+
+- [ ] **Step 4: Update `backfillFieldy` to return action state**
 
 Replace `app/actions/backfill-fieldy.ts` with:
 
@@ -875,25 +953,15 @@ import { createFieldyClient } from "@/lib/fieldy/client";
 import { createIngestionService } from "@/lib/lifelog/ingestion";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { BackfillActionState } from "@/lib/lifelog/backfill-action-state";
 import { runFieldyBackfill } from "./backfill-fieldy-core";
 
-export type BackfillActionState = {
-  status: "idle" | "success" | "error";
-  message: string;
-  importedCount: number | null;
-};
-
-export const initialBackfillActionState: BackfillActionState = {
-  status: "idle",
-  message: "",
-  importedCount: null,
-};
-
 export async function backfillFieldy(
-  _prevState: BackfillActionState,
-  _formData: FormData,
+  _prevStateOrFormData: BackfillActionState | FormData,
+  _formData?: FormData,
 ): Promise<BackfillActionState> {
-  void _formData;
+  const formData = _formData ?? _prevStateOrFormData;
+  void formData;
 
   const result = await runFieldyBackfill({
     getOwnerUserId,
@@ -931,7 +999,7 @@ export async function backfillFieldy(
 }
 ```
 
-- [ ] **Step 4: Run action tests**
+- [ ] **Step 5: Run action tests**
 
 Run:
 
@@ -941,9 +1009,9 @@ node --test --experimental-strip-types tests/backfill-action-source.test.ts test
 
 Expected: PASS.
 
-- [ ] **Step 5: Add failing tests for sync display redaction**
+- [ ] **Step 6: Add failing tests for sync display redaction**
 
-Append to `tests/dashboard-data.test.ts`:
+Update the import from `../lib/lifelog/dashboard-data.ts` in `tests/dashboard-data.test.ts` to include `mapSyncRunDisplay`, then append:
 
 ```ts
 test("mapDashboardData exposes safe sync display fields", () => {
@@ -972,9 +1040,35 @@ test("mapDashboardData exposes safe sync display fields", () => {
     displayError: "Sync failed. Check Fieldy configuration and try again.",
   });
 });
+
+test("mapSyncRunDisplay allowlists safe sync errors and redacts unsafe display text", () => {
+  const cases = [
+    ["Fieldy backfill failed", "Fieldy backfill failed"],
+    ["Fieldy API request failed with 429", "Fieldy API request failed with 429"],
+    ["sk-fieldy-secret", "Sync failed. Check Fieldy configuration and try again."],
+    ["00000000-0000-4000-8000-000000000001", "Sync failed. Check Fieldy configuration and try again."],
+    ["fld_1234567890", "Sync failed. Check Fieldy configuration and try again."],
+    ["Alice said call me back after the appointment transcript text", "Sync failed. Check Fieldy configuration and try again."],
+  ];
+
+  for (const [errorMessage, expected] of cases) {
+    assert.equal(
+      mapSyncRunDisplay({
+        id: "sync-1",
+        source: "backfill",
+        status: "failed",
+        started_at: "2026-06-16T16:00:00.000Z",
+        finished_at: "2026-06-16T16:01:00.000Z",
+        imported_count: 0,
+        error_message: errorMessage,
+      })?.displayError,
+      expected,
+    );
+  }
+});
 ```
 
-- [ ] **Step 6: Run dashboard data tests and verify they fail**
+- [ ] **Step 7: Run dashboard data tests and verify they fail**
 
 Run:
 
@@ -984,7 +1078,7 @@ node --test --experimental-strip-types tests/dashboard-data.test.ts
 
 Expected: FAIL because `lastSyncDisplay` does not exist.
 
-- [ ] **Step 7: Implement sync display mapping**
+- [ ] **Step 8: Implement sync display mapping**
 
 In `lib/lifelog/dashboard-data.ts`, add:
 
@@ -1044,7 +1138,7 @@ In `mapDashboardData`, set:
     lastSyncDisplay: mapSyncRunDisplay(syncRuns[0] ?? null),
 ```
 
-- [ ] **Step 8: Run dashboard/action tests**
+- [ ] **Step 9: Run dashboard/action tests**
 
 Run:
 
@@ -1054,12 +1148,12 @@ node --test --experimental-strip-types tests/dashboard-data.test.ts tests/backfi
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit sync action state and display mapper**
+- [ ] **Step 10: Commit sync action state and display mapper**
 
 Run:
 
 ```bash
-git add app/actions/backfill-fieldy.ts lib/lifelog/dashboard-data.ts tests/backfill-action-source.test.ts tests/dashboard-data.test.ts
+git add app/actions/backfill-fieldy.ts lib/lifelog/backfill-action-state.ts lib/lifelog/dashboard-data.ts tests/backfill-action-source.test.ts tests/dashboard-data.test.ts
 git commit -m "Add sync action state and display mapping"
 ```
 
@@ -1085,6 +1179,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  getConversationDetail,
   isUuid,
   mapConversationDetail,
 } from "../lib/lifelog/conversation-detail.ts";
@@ -1141,6 +1236,71 @@ test("mapConversationDetail orders transcript rows and maps linked tasks", () =>
   );
   assert.equal(detail.tasks[0]?.title, "Send recap");
 });
+
+test("getConversationDetail returns null without child queries when conversation is missing", async () => {
+  const calls: Array<{ table: string; method: string; args: unknown[] }> = [];
+  const client = createConversationDetailClient({
+    calls,
+    conversationResult: { data: null, error: null },
+  });
+
+  assert.equal(
+    await getConversationDetail(
+      client as never,
+      "00000000-0000-4000-8000-000000000001",
+      "00000000-0000-4000-8000-000000000001",
+    ),
+    null,
+  );
+  assert.deepEqual(calls.map((call) => call.table), ["conversations", "conversations", "conversations"]);
+});
+
+test("getConversationDetail filters all reads by authorized user and conversation id", async () => {
+  const calls: Array<{ table: string; method: string; args: unknown[] }> = [];
+  const client = createConversationDetailClient({
+    calls,
+    conversationResult: {
+      data: {
+        id: "conversation-1",
+        fieldy_id: "fieldy-1",
+        title: "Planning",
+        summary: "Summary",
+        content: null,
+        started_at: null,
+        ended_at: null,
+        keywords: [],
+        fieldy_metadata: {},
+      },
+      error: null,
+    },
+    transcriptionsResult: { data: [], error: null },
+    tasksResult: { data: [], error: null },
+  });
+
+  await getConversationDetail(
+    client as never,
+    "00000000-0000-4000-8000-000000000001",
+    "00000000-0000-4000-8000-000000000001",
+  );
+
+  assert.deepEqual(
+    calls.map((call) => [call.table, call.method, call.args]),
+    [
+      ["conversations", "select", ["id, fieldy_id, title, summary, content, started_at, ended_at, keywords, fieldy_metadata"]],
+      ["conversations", "eq", ["id", "00000000-0000-4000-8000-000000000001"]],
+      ["conversations", "eq", ["user_id", "00000000-0000-4000-8000-000000000001"]],
+      ["transcriptions", "select", ["id, speaker_label, text, started_at, ended_at"]],
+      ["transcriptions", "eq", ["conversation_id", "conversation-1"]],
+      ["transcriptions", "eq", ["user_id", "00000000-0000-4000-8000-000000000001"]],
+      ["transcriptions", "order", ["started_at", { ascending: true, nullsFirst: false }]],
+      ["transcriptions", "order", ["id", { ascending: true }]],
+      ["tasks", "select", ["id, title, status, due_at"]],
+      ["tasks", "eq", ["conversation_id", "conversation-1"]],
+      ["tasks", "eq", ["user_id", "00000000-0000-4000-8000-000000000001"]],
+      ["tasks", "order", ["created_at", { ascending: false }]],
+    ],
+  );
+});
 ```
 
 - [ ] **Step 2: Run mapper tests and verify they fail**
@@ -1153,7 +1313,58 @@ node --test --experimental-strip-types tests/conversation-detail.test.ts
 
 Expected: FAIL with module-not-found.
 
-- [ ] **Step 3: Implement conversation detail mapper and query helper**
+- [ ] **Step 3: Add the recording Supabase fake for detail tests**
+
+Append this helper to `tests/conversation-detail.test.ts`:
+
+```ts
+function createConversationDetailClient({
+  calls,
+  conversationResult,
+  transcriptionsResult = { data: [], error: null },
+  tasksResult = { data: [], error: null },
+}: {
+  calls: Array<{ table: string; method: string; args: unknown[] }>;
+  conversationResult: { data: unknown; error: unknown };
+  transcriptionsResult?: { data: unknown; error: unknown };
+  tasksResult?: { data: unknown; error: unknown };
+}) {
+  const responses = {
+    conversations: conversationResult,
+    transcriptions: transcriptionsResult,
+    tasks: tasksResult,
+  };
+
+  return {
+    from(table: "conversations" | "transcriptions" | "tasks") {
+      const builder = {
+        select(...args: unknown[]) {
+          calls.push({ table, method: "select", args });
+          return builder;
+        },
+        eq(...args: unknown[]) {
+          calls.push({ table, method: "eq", args });
+          return builder;
+        },
+        order(...args: unknown[]) {
+          calls.push({ table, method: "order", args });
+          return builder;
+        },
+        async maybeSingle() {
+          return responses[table];
+        },
+        then(resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) {
+          return Promise.resolve(responses[table]).then(resolve, reject);
+        },
+      };
+
+      return builder;
+    },
+  };
+}
+```
+
+- [ ] **Step 4: Implement conversation detail mapper and query helper**
 
 Create `lib/lifelog/conversation-detail.ts`:
 
@@ -1280,6 +1491,7 @@ export function mapConversationDetail({
 export async function getConversationDetail(
   supabase: SupabaseClient<Database>,
   id: string,
+  userId: string,
 ) {
   const conversationResult = await supabase
     .from("conversations")
@@ -1287,6 +1499,7 @@ export async function getConversationDetail(
       "id, fieldy_id, title, summary, content, started_at, ended_at, keywords, fieldy_metadata",
     )
     .eq("id", id)
+    .eq("user_id", userId)
     .maybeSingle();
 
   if (conversationResult.error) {
@@ -1302,12 +1515,14 @@ export async function getConversationDetail(
       .from("transcriptions")
       .select("id, speaker_label, text, started_at, ended_at")
       .eq("conversation_id", conversationResult.data.id)
+      .eq("user_id", userId)
       .order("started_at", { ascending: true, nullsFirst: false })
       .order("id", { ascending: true }),
     supabase
       .from("tasks")
       .select("id, title, status, due_at")
       .eq("conversation_id", conversationResult.data.id)
+      .eq("user_id", userId)
       .order("created_at", { ascending: false }),
   ]);
 
@@ -1327,7 +1542,7 @@ export async function getConversationDetail(
 }
 ```
 
-- [ ] **Step 4: Run mapper tests**
+- [ ] **Step 5: Run mapper tests**
 
 Run:
 
@@ -1337,7 +1552,7 @@ node --test --experimental-strip-types tests/conversation-detail.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 5: Add failing route source tests**
+- [ ] **Step 6: Add failing route source tests**
 
 Create `tests/conversation-detail-route-source.test.ts`:
 
@@ -1350,19 +1565,22 @@ const source = readFileSync("app/conversations/[id]/page.tsx", "utf8");
 
 test("conversation detail route uses async params and authenticated reads", () => {
   assert.match(source, /params:\s*Promise<\{ id: string \}>/);
+  assert.match(source, /searchParams:\s*Promise<Record<string, string \| string\[\] \| undefined>>/);
   assert.match(source, /await params/);
+  assert.match(source, /await searchParams/);
   assert.match(source, /createSupabaseServerClient/);
   assert.doesNotMatch(source, /createSupabaseAdminClient/);
 });
 
 test("conversation detail route validates UUIDs and uses notFound for misses", () => {
   assert.match(source, /isUuid/);
+  assert.match(source, /readFirstSearchParam/);
   assert.match(source, /notFound\(\)/);
   assert.match(source, /getConversationDetail/);
 });
 ```
 
-- [ ] **Step 6: Run route source tests and verify they fail**
+- [ ] **Step 7: Run route source tests and verify they fail**
 
 Run:
 
@@ -1372,7 +1590,7 @@ node --test --experimental-strip-types tests/conversation-detail-route-source.te
 
 Expected: FAIL because the detail route does not exist.
 
-- [ ] **Step 7: Implement conversation detail route**
+- [ ] **Step 8: Implement conversation detail route**
 
 Create `app/conversations/[id]/page.tsx`:
 
@@ -1407,9 +1625,25 @@ function formatDuration(detail: ConversationDetail) {
   return `${minutes} min`;
 }
 
-function buildBackHref(from: string | undefined) {
-  if (!from) return "/";
-  return from.startsWith("?") ? `/${from}` : "/";
+function readFirstSearchParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
+}
+
+function buildBackHref(params: Record<string, string | string[] | undefined>) {
+  const from = readFirstSearchParam(params.from);
+  if (!from.startsWith("?")) return "/";
+
+  const incoming = new URLSearchParams(from);
+  const outgoing = new URLSearchParams();
+  for (const key of ["q", "type", "range", "page"]) {
+    const value = incoming.get(key);
+    if (value) {
+      outgoing.set(key, value);
+    }
+  }
+
+  const query = outgoing.toString();
+  return query ? `/?${query}` : "/";
 }
 
 export default async function ConversationDetailPage({
@@ -1417,10 +1651,10 @@ export default async function ConversationDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ from?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id } = await params;
-  const { from } = await searchParams;
+  const detailSearchParams = await searchParams;
 
   if (!isUuid(id)) {
     notFound();
@@ -1439,7 +1673,7 @@ export default async function ConversationDetailPage({
     redirect("/login?error=invalid_credentials");
   }
 
-  const detail = await getConversationDetail(supabase, id);
+  const detail = await getConversationDetail(supabase, id, user.id);
   if (!detail) {
     notFound();
   }
@@ -1449,7 +1683,7 @@ export default async function ConversationDetailPage({
   return (
     <main className="detail-shell">
       <div className="detail-topbar">
-        <Link href={buildBackHref(from)} className="detail-back-link">
+        <Link href={buildBackHref(detailSearchParams)} className="detail-back-link">
           Back to timeline
         </Link>
       </div>
@@ -1509,6 +1743,7 @@ export default async function ConversationDetailPage({
                 <article key={task.id}>
                   <strong>{task.title}</strong>
                   <span>{task.status}</span>
+                  <em>{task.dueAt ? formatDateTime(task.dueAt, displayTimeZone) : "No due date"}</em>
                 </article>
               ))}
             </div>
@@ -1522,7 +1757,7 @@ export default async function ConversationDetailPage({
 }
 ```
 
-- [ ] **Step 8: Add detail page styles**
+- [ ] **Step 9: Add detail page styles**
 
 Append to `app/globals.css`:
 
@@ -1620,7 +1855,7 @@ Append to `app/globals.css`:
 }
 ```
 
-- [ ] **Step 9: Run detail tests**
+- [ ] **Step 10: Run detail tests**
 
 Run:
 
@@ -1630,7 +1865,7 @@ node --test --experimental-strip-types tests/conversation-detail.test.ts tests/c
 
 Expected: PASS.
 
-- [ ] **Step 10: Commit detail route**
+- [ ] **Step 11: Commit detail route**
 
 Run:
 
@@ -1699,12 +1934,14 @@ import { usePathname, useRouter } from "next/navigation";
 import { useActionState, useMemo, useState, useTransition } from "react";
 import {
   backfillFieldy,
-  initialBackfillActionState,
 } from "@/app/actions/backfill-fieldy";
+import { initialBackfillActionState } from "@/lib/lifelog/backfill-action-state";
 import type { DashboardConversationFilterType } from "@/lib/lifelog/dashboard-query";
 ```
 
 Remove `filterConversationsByTab` and `ConversationFilterTab` imports. Keep `ConversationFilterType`.
+
+Also prune removed lucide icons while updating this file. Remove `BatteryFull`, `Command`, and `MoreVertical` from the lucide import list when the device card, keyboard hint, and row action menu are removed.
 
 - [ ] **Step 4: Replace tab constants with URL values**
 
@@ -2065,7 +2302,17 @@ node --test --experimental-strip-types tests/dashboard-ui-source.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 15: Commit dashboard UI controls**
+- [ ] **Step 15: Run lint for the dashboard UI task**
+
+Run:
+
+```bash
+npm run lint
+```
+
+Expected: PASS. If lint reports unused imports in `components/lifelog-dashboard.tsx`, remove those imports before committing.
+
+- [ ] **Step 16: Commit dashboard UI controls**
 
 Run:
 
