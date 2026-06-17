@@ -290,7 +290,7 @@ export function LifelogDashboard({
   }, [conversationTitleById, data.tasks, displayTimeZone]);
 
   const visibleConversations = conversations;
-  const hasImportedConversations = data.totalConversationCount > 0;
+  const hasImportedConversations = data.importedConversationCount > 0;
   const hasFilteredConversations = visibleConversations.length > 0;
   const hasActiveFilters =
     data.query.q.length > 0 ||
@@ -375,7 +375,7 @@ export function LifelogDashboard({
             <p>Fieldy Sync</p>
             <strong className={syncStatusClassName}>
               <SyncStatusIcon aria-hidden="true" size={18} />
-              {data.lastSyncDisplay?.status ?? "Not synced"}
+              <span>{data.lastSyncDisplay?.status ?? "Not synced"}</span>
             </strong>
           </div>
           <dl>
@@ -408,9 +408,14 @@ export function LifelogDashboard({
             </p>
           ) : null}
           <form action={backfillAction}>
-            <button className="sync-button" disabled={isSyncPending} type="submit">
+            <button
+              aria-label={isSyncPending ? "Syncing Fieldy" : "Sync Fieldy"}
+              className="sync-button"
+              disabled={isSyncPending}
+              type="submit"
+            >
               <RefreshCcw aria-hidden="true" size={18} />
-              {isSyncPending ? "Syncing..." : "Sync Fieldy"}
+              <span>{isSyncPending ? "Syncing..." : "Sync Fieldy"}</span>
             </button>
           </form>
         </section>
@@ -494,7 +499,6 @@ export function LifelogDashboard({
                     <button
                       aria-pressed={data.query.type === tab.value}
                       className={data.query.type === tab.value ? "tab is-active" : "tab"}
-                      data-query={tab.value === "conversation" ? "type=conversation" : undefined}
                       key={tab.value}
                       onClick={() => navigateWith({ type: tab.value, page: "1" })}
                       type="button"
@@ -505,14 +509,14 @@ export function LifelogDashboard({
                 </div>
               </div>
 
-              {data.conversations.length === 0 && !hasActiveFilters ? (
+              {!hasImportedConversations ? (
                 <section className="empty-state">
                   <h2>No Fieldy conversations imported yet</h2>
                   <p>Run a manual sync to backfill your recent Fieldy history.</p>
                 </section>
               ) : null}
 
-              {(hasActiveFilters || hasImportedConversations) && !hasFilteredConversations ? (
+              {hasImportedConversations && hasActiveFilters && !hasFilteredConversations ? (
                 <section className="empty-state">
                   <h2>No matching conversations</h2>
                   <p>Clear the search or choose another filter.</p>

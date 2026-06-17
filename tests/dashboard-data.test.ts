@@ -7,6 +7,13 @@ import {
   mapSyncRunDisplay,
 } from "../lib/lifelog/dashboard-data.ts";
 
+type RecordingCall = {
+  table: string;
+  method: string;
+  args: unknown[];
+  queryId?: number;
+};
+
 test("mapDashboardData groups conversations and counts open tasks", () => {
   const data = mapDashboardData({
     conversations: [
@@ -57,6 +64,7 @@ test("mapDashboardData handles empty imported state", () => {
 
   assert.equal(data.conversations.length, 0);
   assert.equal(data.openTaskCount, 0);
+  assert.equal(data.importedConversationCount, 0);
   assert.equal(data.lastSync, null);
 });
 
@@ -298,15 +306,16 @@ test("mapDashboardData defaults unsafe or unknown Fieldy types to conversation",
 });
 
 test("getDashboardData uses exact open task count beyond limited task rows", async () => {
-  const calls: Array<{
-    table: string;
-    method: string;
-    args: unknown[];
-  }> = [];
+  const calls: RecordingCall[] = [];
 
   const responses = {
     conversations: {
       data: [],
+      error: null,
+    },
+    importedConversationCount: {
+      data: null,
+      count: 0,
       error: null,
     },
     tasks: {
@@ -375,61 +384,65 @@ function createRecordingDashboardClient({
   calls,
   responses,
 }: {
-  calls: Array<{ table: string; method: string; args: unknown[] }>;
+  calls: RecordingCall[];
   responses: Record<string, { data: unknown; count?: number | null; error: unknown }>;
 }) {
+  let nextQueryId = 1;
+
   return {
     from(table: string) {
+      const queryId = nextQueryId;
+      nextQueryId += 1;
       const operations: Array<{ method: string; args: unknown[] }> = [];
       const builder = {
         select(...args: unknown[]) {
           operations.push({ method: "select", args });
-          calls.push({ table, method: "select", args });
+          calls.push({ table, method: "select", args, queryId });
           return builder;
         },
         eq(...args: unknown[]) {
           operations.push({ method: "eq", args });
-          calls.push({ table, method: "eq", args });
+          calls.push({ table, method: "eq", args, queryId });
           return builder;
         },
         or(...args: unknown[]) {
           operations.push({ method: "or", args });
-          calls.push({ table, method: "or", args });
+          calls.push({ table, method: "or", args, queryId });
           return builder;
         },
         filter(...args: unknown[]) {
           operations.push({ method: "filter", args });
-          calls.push({ table, method: "filter", args });
+          calls.push({ table, method: "filter", args, queryId });
           return builder;
         },
         gte(...args: unknown[]) {
           operations.push({ method: "gte", args });
-          calls.push({ table, method: "gte", args });
+          calls.push({ table, method: "gte", args, queryId });
           return builder;
         },
         lt(...args: unknown[]) {
           operations.push({ method: "lt", args });
-          calls.push({ table, method: "lt", args });
+          calls.push({ table, method: "lt", args, queryId });
           return builder;
         },
         order(...args: unknown[]) {
           operations.push({ method: "order", args });
-          calls.push({ table, method: "order", args });
+          calls.push({ table, method: "order", args, queryId });
           return builder;
         },
         range(...args: unknown[]) {
           operations.push({ method: "range", args });
-          calls.push({ table, method: "range", args });
+          calls.push({ table, method: "range", args, queryId });
           return builder;
         },
         limit(...args: unknown[]) {
           operations.push({ method: "limit", args });
-          calls.push({ table, method: "limit", args });
+          calls.push({ table, method: "limit", args, queryId });
           return builder;
         },
         in(...args: unknown[]) {
           operations.push({ method: "in", args });
-          calls.push({ table, method: "in", args });
+          calls.push({ table, method: "in", args, queryId });
           return builder;
         },
         then(resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) {
@@ -438,7 +451,16 @@ function createRecordingDashboardClient({
               operation.method === "select" &&
               (operation.args[1] as { head?: boolean } | undefined)?.head === true,
           );
-          const key = isTaskCount ? "openTaskCount" : table;
+          const isImportedConversationCount = table === "conversations" && operations.some(
+            (operation) =>
+              operation.method === "select" &&
+              (operation.args[1] as { head?: boolean } | undefined)?.head === true,
+          );
+          const key = isTaskCount
+            ? "openTaskCount"
+            : isImportedConversationCount
+              ? "importedConversationCount"
+              : table;
           return Promise.resolve(responses[key]).then(resolve, reject);
         },
       };
@@ -449,9 +471,10 @@ function createRecordingDashboardClient({
 }
 
 test("getDashboardData applies search type range ordering and cumulative range before returning pagination metadata", async () => {
-  const calls: Array<{ table: string; method: string; args: unknown[] }> = [];
+  const calls: RecordingCall[] = [];
   const responses = {
     conversations: { data: [], count: 48, error: null },
+    importedConversationCount: { data: null, count: 71, error: null },
     tasks: { data: [], error: null },
     openTaskCount: { data: null, count: 0, error: null },
     sync_runs: { data: [], error: null },
@@ -467,11 +490,20 @@ test("getDashboardData applies search type range ordering and cumulative range b
   });
 
   assert.equal(data.totalConversationCount, 48);
+  assert.equal(data.importedConversationCount, 71);
   assert.equal(data.shownConversationCount, 0);
   assert.equal(data.hasMoreConversations, true);
+  const filteredConversationsQueryId = calls.find(
+    (call) => call.table === "conversations",
+  )?.queryId;
+  assert.ok(filteredConversationsQueryId);
   assert.deepEqual(
     calls
-      .filter((call) => call.table === "conversations")
+      .filter(
+        (call) =>
+          call.table === "conversations" &&
+          call.queryId === filteredConversationsQueryId,
+      )
       .map((call) => [call.method, call.args]),
     [
       [
@@ -493,10 +525,51 @@ test("getDashboardData applies search type range ordering and cumulative range b
   );
 });
 
-test("getDashboardData applies conversation fallback type filter before pagination", async () => {
-  const calls: Array<{ table: string; method: string; args: unknown[] }> = [];
+test("getDashboardData fetches unfiltered imported conversation count for empty-state semantics", async () => {
+  const calls: RecordingCall[] = [];
   const responses = {
     conversations: { data: [], count: 0, error: null },
+    importedConversationCount: { data: null, count: 7, error: null },
+    tasks: { data: [], error: null },
+    openTaskCount: { data: null, count: 0, error: null },
+    sync_runs: { data: [], error: null },
+  };
+
+  const client = createRecordingDashboardClient({ calls, responses });
+
+  const data = await getDashboardData(client as never, {
+    userId: "00000000-0000-4000-8000-000000000001",
+    query: { q: "filtered away", type: "note", range: "today", page: 1 },
+    displayTimeZone: "America/Chicago",
+    now: new Date("2026-06-17T15:30:00.000Z"),
+  });
+
+  assert.equal(data.totalConversationCount, 0);
+  assert.equal(data.importedConversationCount, 7);
+
+  const countQueryId = calls.find(
+    (call) =>
+      call.table === "conversations" &&
+      call.method === "select" &&
+      (call.args[1] as { head?: boolean } | undefined)?.head === true,
+  )?.queryId;
+  assert.ok(countQueryId);
+  assert.deepEqual(
+    calls
+      .filter((call) => call.table === "conversations" && call.queryId === countQueryId)
+      .map((call) => [call.method, call.args]),
+    [
+      ["select", ["id", { count: "exact", head: true }]],
+      ["eq", ["user_id", "00000000-0000-4000-8000-000000000001"]],
+    ],
+  );
+});
+
+test("getDashboardData applies conversation fallback type filter before pagination", async () => {
+  const calls: RecordingCall[] = [];
+  const responses = {
+    conversations: { data: [], count: 0, error: null },
+    importedConversationCount: { data: null, count: 0, error: null },
     tasks: { data: [], error: null },
     openTaskCount: { data: null, count: 0, error: null },
     sync_runs: { data: [], error: null },

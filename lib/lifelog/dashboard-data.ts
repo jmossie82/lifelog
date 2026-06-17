@@ -83,6 +83,7 @@ export type DashboardData = {
   lastSync: DashboardSyncSummary | null;
   lastSyncDisplay: DashboardSyncDisplay | null;
   query: DashboardQuery;
+  importedConversationCount: number;
   totalConversationCount: number;
   shownConversationCount: number;
   hasMoreConversations: boolean;
@@ -145,6 +146,7 @@ export function mapDashboardData({
   syncRuns,
   openTaskCount,
   query = { q: "", type: "all", range: "all", page: 1 },
+  importedConversationCount,
   totalConversationCount,
 }: {
   conversations: DashboardConversationRow[];
@@ -152,6 +154,7 @@ export function mapDashboardData({
   syncRuns: DashboardSyncRunRow[];
   openTaskCount?: number;
   query?: DashboardQuery;
+  importedConversationCount?: number | null;
   totalConversationCount?: number | null;
 }): DashboardData {
   const openStatuses = new Set<string>(OPEN_TASK_STATUSES);
@@ -166,6 +169,7 @@ export function mapDashboardData({
     type: mapFieldyConversationType(conversation.fieldy_metadata),
   }));
   const conversationCount = totalConversationCount ?? mappedConversations.length;
+  const importedCount = importedConversationCount ?? conversationCount;
 
   return {
     conversations: mappedConversations,
@@ -181,6 +185,7 @@ export function mapDashboardData({
     lastSync: mapSyncRunSummary(syncRuns[0] ?? null),
     lastSyncDisplay: mapSyncRunDisplay(syncRuns[0] ?? null),
     query,
+    importedConversationCount: importedCount,
     totalConversationCount: conversationCount,
     shownConversationCount: mappedConversations.length,
     hasMoreConversations: mappedConversations.length < conversationCount,
@@ -261,14 +266,26 @@ export async function getDashboardData(
       .lt("started_at", rangeBounds.startedAtLt);
   }
 
+  const importedConversationCountQuery = supabase
+    .from("conversations")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", options.userId);
+
   conversationsQuery = conversationsQuery
     .order("started_at", { ascending: false, nullsFirst: false })
     .order("id", { ascending: false })
     .range(0, query.page * DASHBOARD_PAGE_SIZE - 1);
 
-  const [conversationsResult, tasksResult, openTaskCountResult, syncRunsResult] =
+  const [
+    conversationsResult,
+    importedConversationCountResult,
+    tasksResult,
+    openTaskCountResult,
+    syncRunsResult,
+  ] =
     await Promise.all([
       conversationsQuery,
+      importedConversationCountQuery,
       supabase
         .from("tasks")
         .select("id, title, status, due_at, conversation_id")
@@ -294,6 +311,10 @@ export async function getDashboardData(
     throw conversationsResult.error;
   }
 
+  if (importedConversationCountResult.error) {
+    throw importedConversationCountResult.error;
+  }
+
   if (tasksResult.error) {
     throw tasksResult.error;
   }
@@ -312,6 +333,7 @@ export async function getDashboardData(
     syncRuns: syncRunsResult.data ?? [],
     openTaskCount: openTaskCountResult.count ?? 0,
     query,
+    importedConversationCount: importedConversationCountResult.count ?? 0,
     totalConversationCount: conversationsResult.count ?? 0,
   });
 }
