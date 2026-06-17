@@ -32,6 +32,11 @@ export type Database = {
         started_at: string | null;
         ended_at: string | null;
         fieldy_metadata: Json;
+        embedding: string | null;
+        embedding_model: string | null;
+        embedding_input_hash: string | null;
+        embedded_at: string | null;
+        embedding_error: string | null;
         created_at: string;
         updated_at: string;
       }>;
@@ -77,6 +82,23 @@ export type Database = {
           row_user_id: string;
         };
         Returns: boolean;
+      };
+      match_conversations: {
+        Args: {
+          [key: string]: unknown;
+          query_embedding: number[];
+          match_count?: number;
+          match_threshold?: number;
+        };
+        Returns: Array<{
+          id: string;
+          title: string | null;
+          summary: string | null;
+          started_at: string | null;
+          ended_at: string | null;
+          keywords: string[];
+          similarity: number;
+        }>;
       };
     };
     Enums: Record<string, never>;

@@ -23,4 +23,6 @@ test("dashboard page only creates OpenAI embedding client for nonblank recall qu
   assert.match(recallBranch, /getOpenAiEmbeddingEnv\(\)/);
   assert.match(recallBranch, /createOpenAiEmbeddingClient/);
   assert.match(recallBranch, /searchSemanticRecall\(\{/);
+  assert.match(recallBranch, /catch/);
+  assert.match(recallBranch, /semanticRecall = \{ query: recallQuery, results: \[\] \}/);
 });

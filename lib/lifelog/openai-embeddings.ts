@@ -1,3 +1,5 @@
+import "server-only";
+
 type FetchLike = typeof fetch;
 
 type EmbeddingResponse = {

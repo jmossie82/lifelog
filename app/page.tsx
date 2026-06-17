@@ -52,15 +52,19 @@ export default async function Home({
   let semanticRecall: SemanticRecallSearchResult = { query: "", results: [] };
 
   if (recallQuery) {
-    const { openAiApiKey, embeddingModel } = getOpenAiEmbeddingEnv();
-    semanticRecall = await searchSemanticRecall({
-      supabase,
-      query: recallQuery,
-      embedText: createOpenAiEmbeddingClient({
-        apiKey: openAiApiKey,
-        embeddingModel,
-      }).embedText,
-    });
+    try {
+      const { openAiApiKey, embeddingModel } = getOpenAiEmbeddingEnv();
+      semanticRecall = await searchSemanticRecall({
+        supabase,
+        query: recallQuery,
+        embedText: createOpenAiEmbeddingClient({
+          apiKey: openAiApiKey,
+          embeddingModel,
+        }).embedText,
+      });
+    } catch {
+      semanticRecall = { query: recallQuery, results: [] };
+    }
   }
 
   return (

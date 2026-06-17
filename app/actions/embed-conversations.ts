@@ -16,6 +16,9 @@ export async function embedConversations(
   _previousState: EmbedConversationsActionState,
   _formData: FormData,
 ): Promise<EmbedConversationsActionState> {
+  void _previousState;
+  void _formData;
+
   const serverSupabase = await createSupabaseServerClient();
   const {
     data: { user },
