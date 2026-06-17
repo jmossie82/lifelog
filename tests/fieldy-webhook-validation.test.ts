@@ -17,37 +17,74 @@ test("rejects valid JSON that is not an object", () => {
   });
 });
 
-test("rejects unsupported or incomplete Fieldy events", () => {
-  assert.deepEqual(validateFieldyWebhookPayload({ type: "ping" }), {
+test("rejects unsupported or incomplete Fieldy transcription webhook payloads", () => {
+  assert.deepEqual(validateFieldyWebhookPayload({ type: "conversation.processed" }), {
     ok: false,
     status: 422,
-    error: "Unsupported or incomplete Fieldy event",
+    error: "Unsupported or incomplete Fieldy webhook payload",
   });
 
   assert.deepEqual(
     validateFieldyWebhookPayload({
-      type: "conversation.processed",
-      conversation: {},
+      date: "2026-06-16T12:00:00.000Z",
+      transcription: "Hello from Fieldy.",
+      transcriptions: [
+        {
+          text: "Hello from Fieldy.",
+          speaker: "A",
+          start: 0.04,
+          end: 4.4,
+        },
+      ],
     }),
     {
       ok: false,
       status: 422,
-      error: "Unsupported or incomplete Fieldy event",
+      error: "Unsupported or incomplete Fieldy webhook payload",
     },
   );
 });
 
-test("accepts processed conversation events with a Fieldy id", () => {
-  const result = validateFieldyWebhookPayload({
-    type: "conversation.processed",
-    conversation: {
-      id: "fieldy-conversation-123",
-      title: "Product Standup",
+test("rejects unparseable webhook dates", () => {
+  assert.deepEqual(
+    validateFieldyWebhookPayload({
+      date: "not-a-date",
+      transcription: "Hello from Fieldy.",
+      transcriptions: [
+        {
+          text: "Hello from Fieldy.",
+          speaker: "A",
+          start: 0.04,
+          end: 4.4,
+          duration: 4.36,
+        },
+      ],
+    }),
+    {
+      ok: false,
+      status: 422,
+      error: "Unsupported or incomplete Fieldy webhook payload",
     },
+  );
+});
+
+test("accepts completed transcription webhook payloads", () => {
+  const result = validateFieldyWebhookPayload({
+    date: "2026-06-16T12:00:00.000Z",
+    transcription: "Hello from Fieldy.",
+    transcriptions: [
+      {
+        text: "Hello from Fieldy.",
+        speaker: "A",
+        start: 0.04,
+        end: 4.4,
+        duration: 4.36,
+      },
+    ],
   });
 
   assert.equal(result.ok, true);
   if (result.ok) {
-    assert.equal(result.payload.conversation.id, "fieldy-conversation-123");
+    assert.equal(result.payload.transcriptions[0]?.speaker, "A");
   }
 });

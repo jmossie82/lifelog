@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertCircle,
   BarChart3,
   BatteryFull,
   CalendarDays,
@@ -21,11 +22,13 @@ import {
   UsersRound,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { backfillFieldy } from "@/app/actions/backfill-fieldy";
 import {
   filterConversationsByTab,
   type ConversationFilterTab,
   type ConversationFilterType,
 } from "@/lib/fieldy/conversation-filters";
+import type { DashboardData } from "@/lib/lifelog/dashboard-data";
 
 type ConversationType = ConversationFilterType;
 
@@ -49,113 +52,6 @@ type Task = {
   done: boolean;
 };
 
-const conversations: Conversation[] = [
-  {
-    id: "product-standup",
-    time: "10:42 AM",
-    title: "Product Standup",
-    people: "You, Sarah Chen, Mike Lee, Priya Patel",
-    summary: "Discussed onboarding flow updates, user feedback, and launch timing.",
-    duration: "42:18",
-    tasks: 3,
-    type: "conversation",
-    day: "today",
-  },
-  {
-    id: "budget-call",
-    time: "9:15 AM",
-    title: "Call with John Anderson",
-    people: "You, John Anderson",
-    summary: "Reviewed Q2 goals, budget, hiring plan, and follow-up owners.",
-    duration: "28:47",
-    tasks: 2,
-    type: "conversation",
-    day: "today",
-  },
-  {
-    id: "customer-interview",
-    time: "8:02 AM",
-    title: "Customer Interview - Acme Corp",
-    people: "You, Lisa Gomez",
-    summary: "Captured pain points with reporting, integration needs, and rollout risk.",
-    duration: "31:05",
-    tasks: 1,
-    type: "mention",
-    day: "today",
-  },
-  {
-    id: "design-sync",
-    time: "4:30 PM",
-    title: "Design Sync",
-    people: "You, Tom Liu, Emily Park",
-    summary: "Reviewed dashboard navigation, component library updates, and search states.",
-    duration: "36:12",
-    tasks: 2,
-    type: "note",
-    day: "yesterday",
-  },
-  {
-    id: "marketing-call",
-    time: "2:00 PM",
-    title: "Call with Priya Patel",
-    people: "You, Priya",
-    summary: "Aligned on campaign messaging, audience segments, and launch handoff.",
-    duration: "22:33",
-    tasks: 1,
-    type: "conversation",
-    day: "yesterday",
-  },
-  {
-    id: "investor-prep",
-    time: "11:20 AM",
-    title: "Investor Update Prep",
-    people: "You",
-    summary: "Drafted notes and talking points for the upcoming investor update.",
-    duration: "19:44",
-    tasks: 0,
-    type: "task",
-    day: "yesterday",
-  },
-];
-
-const initialTasks: Task[] = [
-  {
-    id: "onboarding",
-    title: "Share onboarding flow prototype",
-    source: "Sarah Chen - Product Standup",
-    due: "Today",
-    done: false,
-  },
-  {
-    id: "budget",
-    title: "Review Q2 budget draft",
-    source: "John Anderson - Call",
-    due: "Tomorrow",
-    done: false,
-  },
-  {
-    id: "integration",
-    title: "Send integration docs",
-    source: "Lisa Gomez - Acme Corp Interview",
-    due: "Tomorrow",
-    done: false,
-  },
-  {
-    id: "design",
-    title: "Schedule design review",
-    source: "Tom Liu - Design Sync",
-    due: "Jun 18",
-    done: false,
-  },
-  {
-    id: "campaign",
-    title: "Confirm campaign messaging",
-    source: "Priya Patel - Call",
-    due: "Jun 19",
-    done: true,
-  },
-];
-
 const navItems = [
   { label: "Timeline", icon: BarChart3 },
   { label: "Search", icon: Search },
@@ -176,27 +72,143 @@ function getConversationIcon(type: ConversationType) {
   return UsersRound;
 }
 
-export function LifelogDashboard() {
+function formatTime(value: string | null) {
+  if (!value) return "No time";
+
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatDate(value: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(value);
+}
+
+function formatDueDate(value: string | null) {
+  if (!value) return "No due date";
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value));
+}
+
+function formatDuration(startedAt: string | null, endedAt: string | null) {
+  if (!startedAt || !endedAt) return "Pending";
+
+  const durationMs = new Date(endedAt).getTime() - new Date(startedAt).getTime();
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return "Pending";
+
+  const totalSeconds = Math.floor(durationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function getConversationDay(startedAt: string | null): Conversation["day"] {
+  if (!startedAt) return "yesterday";
+
+  const today = new Date();
+  const startedDate = new Date(startedAt);
+
+  return today.toDateString() === startedDate.toDateString() ? "today" : "yesterday";
+}
+
+export function LifelogDashboard({ data }: { data: DashboardData }) {
   const [activeTab, setActiveTab] = useState<ConversationFilterTab>("All");
-  const [tasks, setTasks] = useState(initialTasks);
   const [chatInput, setChatInput] = useState("");
   const [recallAnswer, setRecallAnswer] = useState(
-    "You promised to send the integration docs to Lisa Gomez and review the Q2 budget draft with John Anderson.",
+    data.conversations.length > 0
+      ? `Imported ${data.conversations.length} Fieldy conversations and ${data.openTaskCount} open action items.`
+      : "Run a manual sync to import your recent Fieldy history.",
   );
+
+  const conversationTitleById = useMemo(() => {
+    return new Map(data.conversations.map((conversation) => [conversation.id, conversation.title]));
+  }, [data.conversations]);
+
+  const taskCountsByConversationId = useMemo(() => {
+    return data.tasks.reduce((counts, task) => {
+      if (!task.conversationId) return counts;
+
+      counts.set(task.conversationId, (counts.get(task.conversationId) ?? 0) + 1);
+      return counts;
+    }, new Map<string, number>());
+  }, [data.tasks]);
+
+  const conversations = useMemo<Conversation[]>(() => {
+    return data.conversations.map((conversation) => ({
+      id: conversation.id,
+      time: formatTime(conversation.startedAt),
+      title: conversation.title,
+      people:
+        conversation.keywords.length > 0
+          ? `Keywords: ${conversation.keywords.slice(0, 3).join(", ")}`
+          : "Imported from Fieldy",
+      summary: conversation.summary,
+      duration: formatDuration(conversation.startedAt, conversation.endedAt),
+      tasks: taskCountsByConversationId.get(conversation.id) ?? 0,
+      type: conversation.type,
+      day: getConversationDay(conversation.startedAt),
+    }));
+  }, [data.conversations, taskCountsByConversationId]);
+
+  const tasks = useMemo<Task[]>(() => {
+    return data.tasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      source: task.conversationId
+        ? (conversationTitleById.get(task.conversationId) ?? "Imported Fieldy task")
+        : "Imported Fieldy task",
+      due: formatDueDate(task.dueAt),
+      done: task.status === "completed",
+    }));
+  }, [conversationTitleById, data.tasks]);
 
   const visibleConversations = useMemo(() => {
     return filterConversationsByTab(conversations, activeTab);
-  }, [activeTab]);
+  }, [activeTab, conversations]);
 
-  const openTaskCount = tasks.filter((task) => !task.done).length;
+  const hasImportedConversations = data.conversations.length > 0;
+  const hasFilteredConversations = visibleConversations.length > 0;
+  const openTaskCount = data.openTaskCount;
+  const { todayConversationCount, keywordRows, keywordCount, keywordMax } = useMemo(() => {
+    const keywordCounts = data.conversations
+      .flatMap((conversation) => conversation.keywords)
+      .reduce((counts, keyword) => {
+        counts.set(keyword, (counts.get(keyword) ?? 0) + 1);
+        return counts;
+      }, new Map<string, number>());
+    const keywordRowsValue = [...keywordCounts]
+      .sort(([, firstCount], [, secondCount]) => secondCount - firstCount)
+      .slice(0, 5);
 
-  function toggleTask(taskId: string) {
-    setTasks((current) =>
-      current.map((task) =>
-        task.id === taskId ? { ...task, done: !task.done } : task,
-      ),
-    );
-  }
+    return {
+      todayConversationCount: conversations.filter(
+        (conversation) => conversation.day === "today",
+      ).length,
+      keywordRows: keywordRowsValue,
+      keywordCount: keywordCounts.size,
+      keywordMax: Math.max(...keywordRowsValue.map(([, count]) => count), 1),
+    };
+  }, [conversations, data.conversations]);
+  const currentDate = new Date();
+  const yesterdayDate = new Date(currentDate);
+  yesterdayDate.setDate(currentDate.getDate() - 1);
+  const syncStatus = data.lastSync?.status ?? "Not synced";
+  const SyncStatusIcon =
+    data.lastSync?.status === "succeeded"
+      ? Check
+      : data.lastSync?.status === "failed"
+        ? AlertCircle
+        : RefreshCcw;
+  const syncStatusClassName = `sync-status sync-status-${data.lastSync?.status ?? "idle"}`;
 
   function handleRecallSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -204,7 +216,9 @@ export function LifelogDashboard() {
     if (!trimmed) return;
 
     setRecallAnswer(
-      `I found ${openTaskCount} open action items connected to "${trimmed}". Product Standup and the Acme interview are the strongest matches.`,
+      data.conversations.length > 0
+        ? `I found ${openTaskCount} open action items across ${data.conversations.length} imported conversations connected to "${trimmed}".`
+        : `No imported conversations are available for "${trimmed}" yet. Run a manual sync to backfill Fieldy data.`,
     );
     setChatInput("");
   }
@@ -250,10 +264,12 @@ export function LifelogDashboard() {
           </div>
         </section>
 
-        <button className="sync-button" type="button">
-          <RefreshCcw aria-hidden="true" size={18} />
-          Sync Fieldy
-        </button>
+              <form action={backfillFieldy}>
+          <button className="sync-button" type="submit">
+            <RefreshCcw aria-hidden="true" size={18} />
+            Sync Fieldy
+          </button>
+        </form>
 
         <button className="profile-button" type="button">
           <span className="avatar">JS</span>
@@ -277,7 +293,7 @@ export function LifelogDashboard() {
           </label>
           <button className="date-button" type="button">
             <CalendarDays aria-hidden="true" size={19} />
-            Jun 16, 2026
+            {formatDate(currentDate)}
             <ChevronDown aria-hidden="true" size={16} />
           </button>
         </header>
@@ -286,10 +302,14 @@ export function LifelogDashboard() {
           <section className="main-panel">
             <div className="metrics-grid" aria-label="Lifelog summary metrics">
               {[
-                ["Conversations today", "12", "20% vs yesterday"],
-                ["Week", "4h 38m", "15% vs yesterday"],
-                ["People", "18", "12 unique"],
-                ["Action items", "9", "29% vs yesterday"],
+                [
+                  "Conversations today",
+                  String(todayConversationCount),
+                  `${data.conversations.length} imported`,
+                ],
+                ["Recent", String(data.conversations.length), "Imported conversations"],
+                ["Keywords", String(keywordCount), "Unique imported"],
+                ["Action items", String(openTaskCount), `${data.tasks.length} recent shown`],
               ].map(([label, value, delta]) => (
                 <article className="metric" key={label}>
                   <p>{label}</p>
@@ -299,11 +319,18 @@ export function LifelogDashboard() {
               ))}
               <article className="metric sync-metric">
                 <p>Sync status</p>
-                <strong>
-                  <Check aria-hidden="true" size={19} />
-                  All synced
+                <strong className={syncStatusClassName}>
+                  <SyncStatusIcon aria-hidden="true" size={19} />
+                  {syncStatus}
                 </strong>
-                <span>Last sync 2m ago</span>
+                <span>
+                  {data.lastSync?.error_message ??
+                    (data.lastSync?.finished_at
+                      ? `Last sync ${new Intl.DateTimeFormat("en-US").format(
+                          new Date(data.lastSync.finished_at),
+                        )}`
+                      : "Run a sync to import Fieldy data")}
+                </span>
               </article>
             </div>
 
@@ -328,21 +355,37 @@ export function LifelogDashboard() {
                 </button>
               </div>
 
+              {data.conversations.length === 0 ? (
+                <section className="empty-state">
+                  <h2>No Fieldy conversations imported yet</h2>
+                  <p>Run a manual sync to backfill your recent Fieldy history.</p>
+                </section>
+              ) : null}
+
+              {hasImportedConversations && !hasFilteredConversations ? (
+                <section className="empty-state">
+                  <h2>No items in this view yet</h2>
+                  <p>Try another timeline filter to see imported Fieldy conversations.</p>
+                </section>
+              ) : null}
+
               <TimelineGroup
                 conversations={visibleConversations.filter(
                   (conversation) => conversation.day === "today",
                 )}
-                title="Today - Jun 16, 2026"
+                title={`Today - ${formatDate(currentDate)}`}
               />
               <TimelineGroup
                 conversations={visibleConversations.filter(
                   (conversation) => conversation.day === "yesterday",
                 )}
-                title="Yesterday - Jun 15, 2026"
+                title={`Earlier - ${formatDate(yesterdayDate)} and before`}
               />
 
               <footer className="timeline-footer">
-                <span>Showing {visibleConversations.length} of 247 conversations</span>
+                <span>
+                  Showing {visibleConversations.length} of {data.conversations.length} conversations
+                </span>
                 <button type="button">
                   Load more <ChevronDown aria-hidden="true" size={15} />
                 </button>
@@ -362,7 +405,8 @@ export function LifelogDashboard() {
                   <label className={task.done ? "task-row is-done" : "task-row"} key={task.id}>
                     <input
                       checked={task.done}
-                      onChange={() => toggleTask(task.id)}
+                      disabled
+                      readOnly
                       type="checkbox"
                     />
                     <span>
@@ -386,20 +430,14 @@ export function LifelogDashboard() {
                 <button type="button">Speakers</button>
               </div>
               <div className="keyword-list">
-                {[
-                  ["onboarding", 18],
-                  ["launch", 14],
-                  ["integration", 12],
-                  ["dashboard", 11],
-                  ["budget", 10],
-                ].map(([keyword, count]) => (
+                {keywordRows.map(([keyword, count]) => (
                   <div className="keyword-row" key={keyword}>
                     <span>{keyword}</span>
                     <meter
                       aria-label={`${keyword} keyword count`}
-                      max="20"
+                      max={keywordMax}
                       min="0"
-                      value={count as number}
+                      value={count}
                     />
                     <em>{count}</em>
                   </div>

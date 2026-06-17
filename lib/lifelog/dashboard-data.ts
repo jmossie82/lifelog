@@ -1,0 +1,182 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+import type { Database, Json } from "@/lib/supabase/types";
+
+type ConversationTableRow = Database["public"]["Tables"]["conversations"]["Row"];
+type TaskTableRow = Database["public"]["Tables"]["tasks"]["Row"];
+type SyncRunTableRow = Database["public"]["Tables"]["sync_runs"]["Row"];
+
+export const OPEN_TASK_STATUSES = ["new", "approved"] as const;
+const DASHBOARD_CONVERSATION_TYPES = [
+  "conversation",
+  "note",
+  "task",
+  "mention",
+] as const;
+
+export type DashboardConversationType =
+  (typeof DASHBOARD_CONVERSATION_TYPES)[number];
+
+export type DashboardConversationRow = Pick<
+  ConversationTableRow,
+  | "id"
+  | "fieldy_id"
+  | "title"
+  | "summary"
+  | "started_at"
+  | "ended_at"
+  | "keywords"
+  | "fieldy_metadata"
+>;
+
+export type DashboardTaskRow = Pick<
+  TaskTableRow,
+  "id" | "title" | "status" | "due_at" | "conversation_id"
+>;
+
+export type DashboardSyncRunRow = Pick<
+  SyncRunTableRow,
+  | "id"
+  | "source"
+  | "status"
+  | "started_at"
+  | "finished_at"
+  | "imported_count"
+  | "error_message"
+>;
+
+export type DashboardData = {
+  conversations: Array<{
+    id: string;
+    fieldyId: string;
+    title: string;
+    summary: string;
+    startedAt: string | null;
+    endedAt: string | null;
+    keywords: string[];
+    type: DashboardConversationType;
+  }>;
+  tasks: Array<{
+    id: string;
+    title: string;
+    status: string;
+    dueAt: string | null;
+    conversationId: string | null;
+  }>;
+  openTaskCount: number;
+  lastSync: DashboardSyncRunRow | null;
+};
+
+export function mapDashboardData({
+  conversations,
+  tasks,
+  syncRuns,
+  openTaskCount,
+}: {
+  conversations: DashboardConversationRow[];
+  tasks: DashboardTaskRow[];
+  syncRuns: DashboardSyncRunRow[];
+  openTaskCount?: number;
+}): DashboardData {
+  const openStatuses = new Set<string>(OPEN_TASK_STATUSES);
+
+  return {
+    conversations: conversations.map((conversation) => ({
+      id: conversation.id,
+      fieldyId: conversation.fieldy_id,
+      title: conversation.title ?? "Untitled conversation",
+      summary: conversation.summary ?? "No summary available yet.",
+      startedAt: conversation.started_at,
+      endedAt: conversation.ended_at,
+      keywords: conversation.keywords,
+      type: mapFieldyConversationType(conversation.fieldy_metadata),
+    })),
+    tasks: tasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      dueAt: task.due_at,
+      conversationId: task.conversation_id,
+    })),
+    openTaskCount:
+      openTaskCount ?? tasks.filter((task) => openStatuses.has(task.status)).length,
+    lastSync: syncRuns[0] ?? null,
+  };
+}
+
+function mapFieldyConversationType(
+  fieldyMetadata: Json | undefined,
+): DashboardConversationType {
+  if (
+    !fieldyMetadata ||
+    Array.isArray(fieldyMetadata) ||
+    typeof fieldyMetadata !== "object"
+  ) {
+    return "conversation";
+  }
+
+  const fieldyType = fieldyMetadata.type;
+  if (typeof fieldyType !== "string") {
+    return "conversation";
+  }
+
+  return DASHBOARD_CONVERSATION_TYPES.includes(
+    fieldyType as DashboardConversationType,
+  )
+    ? (fieldyType as DashboardConversationType)
+    : "conversation";
+}
+
+export async function getDashboardData(
+  supabase: SupabaseClient<Database>,
+): Promise<DashboardData> {
+  const [conversationsResult, tasksResult, openTaskCountResult, syncRunsResult] =
+    await Promise.all([
+      supabase
+        .from("conversations")
+        .select(
+          "id, fieldy_id, title, summary, started_at, ended_at, keywords, fieldy_metadata",
+        )
+        .order("started_at", { ascending: false, nullsFirst: false })
+        .limit(50),
+      supabase
+        .from("tasks")
+        .select("id, title, status, due_at, conversation_id")
+        .order("created_at", { ascending: false })
+        .limit(20),
+      supabase
+        .from("tasks")
+        .select("id", { count: "exact", head: true })
+        .in("status", [...OPEN_TASK_STATUSES]),
+      supabase
+        .from("sync_runs")
+        .select(
+          "id, source, status, started_at, finished_at, imported_count, error_message",
+        )
+        .order("started_at", { ascending: false })
+        .limit(1),
+    ]);
+
+  if (conversationsResult.error) {
+    throw conversationsResult.error;
+  }
+
+  if (tasksResult.error) {
+    throw tasksResult.error;
+  }
+
+  if (openTaskCountResult.error) {
+    throw openTaskCountResult.error;
+  }
+
+  if (syncRunsResult.error) {
+    throw syncRunsResult.error;
+  }
+
+  return mapDashboardData({
+    conversations: conversationsResult.data ?? [],
+    tasks: tasksResult.data ?? [],
+    syncRuns: syncRunsResult.data ?? [],
+    openTaskCount: openTaskCountResult.count ?? 0,
+  });
+}

@@ -1,15 +1,9 @@
 import type { FieldyWebhookPayload } from "@/lib/fieldy/types";
 
-type ValidFieldyWebhookPayload = FieldyWebhookPayload & {
-  conversation: NonNullable<FieldyWebhookPayload["conversation"]> & {
-    id: string;
-  };
-};
-
 type PayloadValidation =
   | {
       ok: true;
-      payload: ValidFieldyWebhookPayload;
+      payload: FieldyWebhookPayload;
     }
   | {
       ok: false;
@@ -21,29 +15,43 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isValidSegment(value: unknown) {
+  if (!isRecord(value)) return false;
+
+  return (
+    typeof value.text === "string" &&
+    typeof value.speaker === "string" &&
+    typeof value.start === "number" &&
+    typeof value.end === "number" &&
+    typeof value.duration === "number"
+  );
+}
+
 export function validateFieldyWebhookPayload(body: unknown): PayloadValidation {
   if (!isRecord(body)) {
     return { ok: false, status: 400, error: "JSON payload must be an object" };
   }
 
-  if (body.type !== "conversation.processed" || !isRecord(body.conversation)) {
-    return {
-      ok: false,
-      status: 422,
-      error: "Unsupported or incomplete Fieldy event",
-    };
-  }
+  const hasValidDate =
+    typeof body.date === "string" &&
+    !Number.isNaN(new Date(body.date).getTime());
 
-  if (typeof body.conversation.id !== "string" || body.conversation.id.length === 0) {
+  if (
+    !hasValidDate ||
+    typeof body.transcription !== "string" ||
+    !Array.isArray(body.transcriptions) ||
+    body.transcriptions.length === 0 ||
+    !body.transcriptions.every(isValidSegment)
+  ) {
     return {
       ok: false,
       status: 422,
-      error: "Unsupported or incomplete Fieldy event",
+      error: "Unsupported or incomplete Fieldy webhook payload",
     };
   }
 
   return {
     ok: true,
-    payload: body as ValidFieldyWebhookPayload,
+    payload: body as FieldyWebhookPayload,
   };
 }
