@@ -113,25 +113,64 @@ function getDisplayDateParts(value: Date, displayTimeZone: string) {
   };
 }
 
-function getDisplayDayStart(value: Date, displayTimeZone: string) {
-  const { day, month, year } = getDisplayDateParts(value, displayTimeZone);
-  const approximateUtcNoon = new Date(Date.UTC(year, month - 1, day, 12));
+function addDisplayDays(
+  { day, month, year }: { day: number; month: number; year: number },
+  days: number,
+) {
+  const value = new Date(Date.UTC(year, month - 1, day + days));
+
+  return {
+    day: value.getUTCDate(),
+    month: value.getUTCMonth() + 1,
+    year: value.getUTCFullYear(),
+  };
+}
+
+function getTimeZoneOffsetMinutes(value: Date, displayTimeZone: string) {
   const offsetParts = new Intl.DateTimeFormat("en-US", {
     hour: "2-digit",
     hour12: false,
     timeZone: displayTimeZone,
     timeZoneName: "longOffset",
-  }).formatToParts(approximateUtcNoon);
+  }).formatToParts(value);
   const offset =
     offsetParts.find((part) => part.type === "timeZoneName")?.value ??
     "GMT+00:00";
-  const match = offset.match(/^GMT([+-])(\d{2}):(\d{2})$/);
-  const offsetMinutes = match
-    ? (match[1] === "-" ? -1 : 1) *
-      (Number(match[2]) * 60 + Number(match[3]))
-    : 0;
 
-  return new Date(Date.UTC(year, month - 1, day) - offsetMinutes * 60_000);
+  if (offset === "GMT" || offset === "UTC") {
+    return 0;
+  }
+
+  const match = offset.match(/^(?:GMT|UTC)([+-])(\d{1,2})(?::(\d{2}))?$/);
+
+  return match
+    ? (match[1] === "-" ? -1 : 1) *
+        (Number(match[2]) * 60 + Number(match[3] ?? "0"))
+    : 0;
+}
+
+function getDisplayLocalMidnightUtc(
+  { day, month, year }: { day: number; month: number; year: number },
+  displayTimeZone: string,
+) {
+  const localMidnightUtc = Date.UTC(year, month - 1, day);
+  let candidateTime = localMidnightUtc;
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const offsetMinutes = getTimeZoneOffsetMinutes(
+      new Date(candidateTime),
+      displayTimeZone,
+    );
+    const nextCandidateTime = localMidnightUtc - offsetMinutes * 60_000;
+
+    if (nextCandidateTime === candidateTime) {
+      break;
+    }
+
+    candidateTime = nextCandidateTime;
+  }
+
+  return new Date(candidateTime);
 }
 
 export function getDashboardRangeBounds({
@@ -148,9 +187,12 @@ export function getDashboardRangeBounds({
   }
 
   if (range === "today") {
-    const start = getDisplayDayStart(now, displayTimeZone);
-    const end = new Date(start);
-    end.setUTCDate(end.getUTCDate() + 1);
+    const displayDate = getDisplayDateParts(now, displayTimeZone);
+    const start = getDisplayLocalMidnightUtc(displayDate, displayTimeZone);
+    const end = getDisplayLocalMidnightUtc(
+      addDisplayDays(displayDate, 1),
+      displayTimeZone,
+    );
 
     return {
       startedAtGte: start.toISOString(),

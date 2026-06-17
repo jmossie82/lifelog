@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  DASHBOARD_CONVERSATION_FILTER_TYPES,
+  DASHBOARD_MAX_SEARCH_LENGTH,
   DASHBOARD_MAX_PAGE,
   DASHBOARD_PAGE_SIZE,
+  DASHBOARD_RANGE_FILTERS,
   buildConversationSearchFilter,
   getDashboardRangeBounds,
   normalizeDashboardQuery,
@@ -42,6 +45,18 @@ test("normalizeDashboardQuery accepts known filters and caps page", () => {
 test("dashboard constants define a bounded cumulative page size", () => {
   assert.equal(DASHBOARD_PAGE_SIZE, 25);
   assert.equal(DASHBOARD_MAX_PAGE, 20);
+  assert.equal(DASHBOARD_MAX_SEARCH_LENGTH, 200);
+});
+
+test("dashboard filters expose expected public values", () => {
+  assert.deepEqual(DASHBOARD_CONVERSATION_FILTER_TYPES, [
+    "all",
+    "conversation",
+    "note",
+    "task",
+    "mention",
+  ]);
+  assert.deepEqual(DASHBOARD_RANGE_FILTERS, ["all", "today", "week"]);
 });
 
 test("buildConversationSearchFilter returns null for empty search", () => {
@@ -93,6 +108,34 @@ test("getDashboardRangeBounds calculates today in the display timezone", () => {
     {
       startedAtGte: "2026-06-17T05:00:00.000Z",
       startedAtLt: "2026-06-18T05:00:00.000Z",
+    },
+  );
+});
+
+test("getDashboardRangeBounds calculates spring-forward today bounds in the display timezone", () => {
+  assert.deepEqual(
+    getDashboardRangeBounds({
+      range: "today",
+      displayTimeZone: "America/Chicago",
+      now: new Date("2026-03-08T18:00:00.000Z"),
+    }),
+    {
+      startedAtGte: "2026-03-08T06:00:00.000Z",
+      startedAtLt: "2026-03-09T05:00:00.000Z",
+    },
+  );
+});
+
+test("getDashboardRangeBounds calculates fall-back today bounds in the display timezone", () => {
+  assert.deepEqual(
+    getDashboardRangeBounds({
+      range: "today",
+      displayTimeZone: "America/Chicago",
+      now: new Date("2026-11-01T18:00:00.000Z"),
+    }),
+    {
+      startedAtGte: "2026-11-01T05:00:00.000Z",
+      startedAtLt: "2026-11-02T06:00:00.000Z",
     },
   );
 });
