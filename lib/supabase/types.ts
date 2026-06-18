@@ -41,6 +41,25 @@ export type Database = {
         created_at: string;
         updated_at: string;
       }>;
+      recall_chat_sessions: Row<{
+        id: string;
+        user_id: string;
+        title: string;
+        latest_user_text: string | null;
+        source_count: number;
+        message_count: number;
+        created_at: string;
+        updated_at: string;
+      }>;
+      recall_chat_messages: Row<{
+        id: string;
+        user_id: string;
+        session_id: string;
+        role: "user" | "assistant";
+        parts: Json;
+        source_citations: Json;
+        created_at: string;
+      }>;
       transcriptions: Row<{
         id: string;
         user_id: string;

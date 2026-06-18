@@ -18,6 +18,14 @@ const normalizedSemanticRecallMigration = semanticRecallMigration
   .replace(/\s+/g, " ")
   .trim();
 
+const recallChatPersistenceMigration = readFileSync(
+  "supabase/migrations/20260618000000_recall_chat_persistence_v1.sql",
+  "utf8",
+);
+
+const normalizedRecallChatPersistenceMigration =
+  recallChatPersistenceMigration.replace(/\s+/g, " ").trim();
+
 function assertOwnerReadPolicy(table: string) {
   const policyTableName = table.replace("_", " ");
   const basePolicyPattern = `create policy "Owner can read ${policyTableName}" on public\\.${table} for select to authenticated`;
@@ -158,4 +166,53 @@ test("semantic recall match rpc keeps results owner scoped", () => {
     normalizedSemanticRecallMigration,
     /grant execute on function public\.match_conversations[^;]+to public;/,
   );
+});
+
+test("recall chat persistence migration creates owner-scoped tables", () => {
+  assert.match(recallChatPersistenceMigration, /create table public\.recall_chat_sessions/);
+  assert.match(recallChatPersistenceMigration, /create table public\.recall_chat_messages/);
+  assert.match(recallChatPersistenceMigration, /user_id uuid not null references auth\.users\(id\) on delete cascade/);
+  assert.match(recallChatPersistenceMigration, /unique \(user_id, id\)/);
+  assert.match(
+    normalizedRecallChatPersistenceMigration,
+    /foreign key \(user_id, session_id\) references public\.recall_chat_sessions\(user_id, id\) on delete cascade/,
+  );
+  assert.match(recallChatPersistenceMigration, /role text not null check \(role in \('user', 'assistant'\)\)/);
+  assert.match(recallChatPersistenceMigration, /parts jsonb not null/);
+  assert.match(recallChatPersistenceMigration, /source_citations jsonb not null default '\[\]'::jsonb/);
+  assert.doesNotMatch(recallChatPersistenceMigration, /raw_prompt/);
+  assert.doesNotMatch(recallChatPersistenceMigration, /api_key/);
+});
+
+test("recall chat persistence migration enables owner-only RLS writes", () => {
+  for (const table of ["recall_chat_sessions", "recall_chat_messages"]) {
+    assert.match(
+      recallChatPersistenceMigration,
+      new RegExp(`alter table public\\.${table} enable row level security`),
+    );
+    assert.match(
+      normalizedRecallChatPersistenceMigration,
+      new RegExp(`on public\\.${table} for select to authenticated using \\(public\\.is_lifelog_owner\\(user_id\\)\\);`),
+    );
+    assert.match(
+      normalizedRecallChatPersistenceMigration,
+      new RegExp(`on public\\.${table} for insert to authenticated with check \\(public\\.is_lifelog_owner\\(user_id\\)\\);`),
+    );
+    assert.match(
+      normalizedRecallChatPersistenceMigration,
+      new RegExp(`on public\\.${table} for update to authenticated using \\(public\\.is_lifelog_owner\\(user_id\\)\\) with check \\(public\\.is_lifelog_owner\\(user_id\\)\\);`),
+    );
+    assert.doesNotMatch(
+      normalizedRecallChatPersistenceMigration,
+      new RegExp(`grant [^;]+ on (?:table )?public\\.${table}[^;]*\\bto\\b[^;]*\\bpublic\\b[^;]*;`),
+    );
+    assert.doesNotMatch(
+      normalizedRecallChatPersistenceMigration,
+      /grant [^;]+ on all tables in schema public [^;]*\bto\b[^;]*\bpublic\b[^;]*;/,
+    );
+    assert.doesNotMatch(
+      normalizedRecallChatPersistenceMigration,
+      new RegExp(`create policy [^;]+ on public\\.${table}[^;]*\\bto public\\b[^;]*;`),
+    );
+  }
 });
