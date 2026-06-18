@@ -11,7 +11,8 @@ test("recall chat page enforces owner authentication", () => {
   assert.match(pageSource, /getOwnerUserId/);
   assert.match(pageSource, /createSupabaseServerClient/);
   assert.match(pageSource, /supabase\.auth\.getUser\(\)/);
-  assert.match(pageSource, /if \(!user\) \{\s*redirect\("\/login"\);/);
+  assert.match(pageSource, /error,/);
+  assert.match(pageSource, /if \(error \|\| !user\) \{\s*redirect\("\/login"\);/);
   assert.match(pageSource, /user\.id !== getOwnerUserId\(\)/);
   assert.match(pageSource, /redirect\("\/login\?error=invalid_credentials"\)/);
   assert.match(pageSource, /<RecallChat \/>/);
@@ -20,10 +21,13 @@ test("recall chat page enforces owner authentication", () => {
 test("dashboard primary navigation links Recall to the chat page", () => {
   assert.match(dashboardSource, /\{ label: "Timeline", href: "\/", icon: BarChart3 \}/);
   assert.match(dashboardSource, /\{ label: "Recall", href: "\/chat", icon: MessageSquareText \}/);
+  assert.match(dashboardSource, /\{ label: "Search", href: null, icon: Search \}/);
   assert.match(dashboardSource, /<Link[\s\S]*href=\{item\.href\}/);
-  assert.match(dashboardSource, /item\.label === "Timeline" && pathname === "\/"/);
-  assert.match(dashboardSource, /pathname === item\.href/);
+  assert.match(dashboardSource, /const isActive = item\.href \? pathname === item\.href : false/);
+  assert.match(dashboardSource, /aria-disabled="true"/);
+  assert.match(dashboardSource, /className="nav-item is-disabled"/);
   assert.doesNotMatch(dashboardSource, /const isActive = item\.label === "Timeline"/);
+  assert.doesNotMatch(dashboardSource, /\{ label: "Search", href: "\/", icon: Search \}/);
   assert.doesNotMatch(
     dashboardSource,
     /label: "Recall"[\s\S]{0,120}<a[\s\S]{0,120}href="#"/,

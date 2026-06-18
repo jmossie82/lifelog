@@ -5,7 +5,7 @@ import { test } from "node:test";
 const source = readFileSync("components/recall-chat.tsx", "utf8");
 const styles = readFileSync("app/globals.css", "utf8");
 
-test("recall chat uses AI SDK 5 transport to the recall route", () => {
+test("recall chat uses AI SDK 6 transport to the recall route", () => {
   assert.match(source, /"use client";/);
   assert.match(source, /import \{ DefaultChatTransport \} from "ai";/);
   assert.match(source, /import \{ useChat \} from "@ai-sdk\/react";/);
@@ -41,10 +41,16 @@ test("recall chat exposes accessible empty, streaming, error, and ask states", (
 });
 
 test("recall chat styles are responsive focused chat styles", () => {
+  assert.match(styles, /--surface-chat:/);
+  assert.match(styles, /--surface-chat-user:/);
+  assert.match(styles, /--text-error:/);
+  assert.match(styles, /--border-error:/);
   assert.match(styles, /\.chat-page/);
   assert.match(styles, /\.chat-shell/);
   assert.match(styles, /\.recall-thread/);
   assert.match(styles, /\.chat-message/);
   assert.match(styles, /\.chat-form/);
+  assert.doesNotMatch(styles, /\.chat-message-body[\s\S]{0,220}background: #[0-9a-f]{6};/i);
+  assert.doesNotMatch(styles, /\.chat-error[\s\S]{0,180}#[0-9a-f]{6};/i);
   assert.match(styles, /@media \(max-width: 640px\)[\s\S]*\.chat-shell/);
 });

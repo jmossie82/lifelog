@@ -1,12 +1,14 @@
 # Recall Chat V1 Implementation Plan
 
+This document was authored as the prospective implementation plan for the Recall Chat V1 slice and is kept with the PR as the execution record. The task checkboxes preserve the original agent workflow rather than the current completion state.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a private streaming `/chat` Recall Chat that answers from imported Fieldy lifelog entries using the existing semantic recall retrieval path.
 
-**Architecture:** Keep retrieval and auth on the server. Add AI SDK 5 for streaming UI messages, expose one owner-only App Router route handler, and build a focused client chat page with session-local messages. Use the existing OpenAI embedding client, Supabase `match_conversations` RPC, and grounded source builder so citations stay tied to private owner-visible conversations.
+**Architecture:** Keep retrieval and auth on the server. Add AI SDK 6 for streaming UI messages, expose one owner-only App Router route handler, and build a focused client chat page with session-local messages. Use the existing OpenAI embedding client, Supabase `match_conversations` RPC, and grounded source builder so citations stay tied to private owner-visible conversations.
 
-**Tech Stack:** Next.js App Router 16.2.9, React 19.2, TypeScript strict mode, Vercel AI SDK 5, `@ai-sdk/openai`, Supabase SSR/RLS, OpenAI embeddings, Node `node:test`, existing CSS/lucide-react UI.
+**Tech Stack:** Next.js App Router 16.2.9, React 19.2.1, TypeScript strict mode, Vercel AI SDK 6, `@ai-sdk/openai`, Supabase SSR/RLS, OpenAI embeddings, Node `node:test`, existing CSS/lucide-react UI.
 
 ---
 
@@ -16,10 +18,10 @@ Context7 checks performed before writing this plan:
 
 ```bash
 npx ctx7@latest library "Vercel AI SDK" "plan next slice for lifelog Recall Chat using Vercel AI SDK streaming chat, Next.js App Router route handler, React useChat client, tool or RAG context integration"
-npx ctx7@latest docs /vercel/ai "AI SDK 5 streaming chat Next.js App Router route handler useChat client typed messages convertToModelMessages streamText UIMessage persistence RAG context"
+npx ctx7@latest docs /vercel/ai "AI SDK 6 streaming chat Next.js App Router route handler useChat client typed messages convertToModelMessages streamText UIMessage persistence RAG context"
 ```
 
-Relevant current AI SDK 5 shape from Context7:
+Relevant current AI SDK 6 shape from Context7:
 
 - Server route handlers use `streamText`, `convertToModelMessages`, `createUIMessageStreamResponse`, `toUIMessageStream`, and `UIMessage` from `ai`.
 - Client chat UI uses `useChat` from `@ai-sdk/react`; `sendMessage({ text })` sends a user message, and rendered message text lives in `message.parts` where `part.type === "text"`.
@@ -48,17 +50,17 @@ This slice does not add:
 
 ## File Structure
 
-- Modify `package.json` and `package-lock.json`: add `ai`, `@ai-sdk/react`, and `@ai-sdk/openai`.
-- Create `lib/lifelog/recall-chat.ts`: pure chat request parsing, history trimming, source prompt building, and safe error helpers.
-- Create `tests/recall-chat.test.ts`: unit tests for chat helper behavior.
-- Create `app/api/recall-chat/route.ts`: owner-authenticated streaming route handler.
-- Create `tests/recall-chat-route-source.test.ts`: source assertions for auth, AI SDK streaming, retrieval, and safe errors.
-- Create `app/chat/page.tsx`: owner-authenticated server page for Recall Chat.
-- Create `components/recall-chat.tsx`: client chat surface using `useChat`.
-- Modify `components/lifelog-dashboard.tsx`: route sidebar Recall nav to `/chat` and keep the dashboard recall widget as one-shot search.
-- Modify `app/globals.css`: chat page layout, transcript-like message styling, streaming state, and compact source/citation treatment.
-- Create `tests/recall-chat-page-source.test.ts`: source assertions for page auth and dashboard navigation.
-- Create `tests/recall-chat-ui-source.test.ts`: source assertions for `useChat`, message parts rendering, send behavior, and empty/error states.
+- Add `ai`, `@ai-sdk/react`, and `@ai-sdk/openai` to `package.json` and `package-lock.json`.
+- Build `lib/lifelog/recall-chat.ts` for pure request parsing, history trimming, source prompt construction, and safe error helpers.
+- Cover chat helper behavior in `tests/recall-chat.test.ts`.
+- Expose the owner-authenticated streaming route handler in `app/api/recall-chat/route.ts`.
+- Assert route auth, AI SDK streaming, retrieval, and safe errors in `tests/recall-chat-route-source.test.ts`.
+- Gate `app/chat/page.tsx` with owner authentication before rendering Recall Chat.
+- Render the `useChat` client surface from `components/recall-chat.tsx`.
+- Route the dashboard sidebar Recall item to `/chat` while keeping the dashboard recall widget as one-shot search in `components/lifelog-dashboard.tsx`.
+- Style the chat page layout, transcript messages, streaming state, and compact source/citation treatment in `app/globals.css`.
+- Assert page auth and dashboard navigation in `tests/recall-chat-page-source.test.ts`.
+- Assert `useChat`, message parts rendering, send behavior, and empty/error states in `tests/recall-chat-ui-source.test.ts`.
 
 ---
 
@@ -983,8 +985,8 @@ Expected: Next starts locally. Open `/chat`, sign in as the owner, ask a questio
 Dispatch a review subagent with this brief:
 
 ```text
-Review the Recall Chat V1 implementation in /Users/jonmossie/Documents/GitHub/lifelog.
-Use Context7 docs for Vercel AI SDK 5 before reviewing AI SDK route/client usage.
+Review the Recall Chat V1 implementation in the repository.
+Use Context7 docs for Vercel AI SDK 6 before reviewing AI SDK route/client usage.
 Focus on owner auth, private data boundaries, AI SDK streaming correctness, prompt/source grounding, test gaps, and Next.js App Router compatibility.
 Return findings only; do not make code changes.
 ```
@@ -1025,4 +1027,4 @@ Type consistency:
 
 - `extractLatestUserText`, `trimRecallChatHistory`, `parseRecallChatMessages`, and `buildRecallChatSystemPrompt` are defined in Task 2 and used with the same names in Task 3.
 - Route imports match the existing env, embedding, semantic recall, and Supabase helper names.
-- Client uses AI SDK 5 `useChat`, `sendMessage({ text })`, and text `message.parts` as confirmed by Context7.
+- Client uses AI SDK 6 `useChat`, `sendMessage({ text })`, and text `message.parts` as confirmed by Context7.

@@ -60,13 +60,13 @@ type Task = {
 
 const navItems = [
   { label: "Timeline", href: "/", icon: BarChart3 },
-  { label: "Search", href: "/", icon: Search },
+  { label: "Search", href: null, icon: Search },
   { label: "Recall", href: "/chat", icon: MessageSquareText },
-  { label: "Tasks", href: "/", icon: ListChecks },
-  { label: "Insights", href: "/", icon: Tags },
-  { label: "Calendar", href: "/", icon: CalendarDays },
-  { label: "Contacts", href: "/", icon: UsersRound },
-  { label: "Settings", href: "/", icon: Settings },
+  { label: "Tasks", href: null, icon: ListChecks },
+  { label: "Insights", href: null, icon: Tags },
+  { label: "Calendar", href: null, icon: CalendarDays },
+  { label: "Contacts", href: null, icon: UsersRound },
+  { label: "Settings", href: null, icon: Settings },
 ];
 
 const tabs: Array<{ label: string; value: DashboardConversationFilterType }> = [
@@ -367,11 +367,9 @@ export function LifelogDashboard({
         <nav className="nav-list">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive =
-              item.href === "/"
-                ? item.label === "Timeline" && pathname === "/"
-                : pathname === item.href;
-            return (
+            const isActive = item.href ? pathname === item.href : false;
+
+            return item.href ? (
               <Link
                 aria-current={isActive ? "page" : undefined}
                 className={isActive ? "nav-item is-active" : "nav-item"}
@@ -381,6 +379,18 @@ export function LifelogDashboard({
                 <Icon aria-hidden="true" size={19} strokeWidth={1.9} />
                 <span>{item.label}</span>
               </Link>
+            ) : (
+              <button
+                aria-disabled="true"
+                className="nav-item is-disabled"
+                disabled
+                key={item.label}
+                title="Coming soon"
+                type="button"
+              >
+                <Icon aria-hidden="true" size={19} strokeWidth={1.9} />
+                <span>{item.label}</span>
+              </button>
             );
           })}
         </nav>

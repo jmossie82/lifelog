@@ -61,7 +61,7 @@ export async function POST(request: Request) {
     const result = streamText({
       model: openai(recallAnswerModel),
       system: buildRecallChatSystemPrompt(sources),
-      messages: convertToModelMessages(modelMessages),
+      messages: await convertToModelMessages(modelMessages),
     });
 
     return result.toUIMessageStreamResponse();

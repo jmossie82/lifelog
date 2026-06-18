@@ -4,13 +4,13 @@ import { test } from "node:test";
 
 const source = readFileSync("app/api/recall-chat/route.ts", "utf8");
 
-test("recall chat route streams UI messages with AI SDK 5", () => {
+test("recall chat route streams UI messages with AI SDK 6", () => {
   assert.match(source, /import \{ openai \} from "@ai-sdk\/openai";/);
   assert.match(source, /convertToModelMessages/);
   assert.match(source, /streamText/);
   assert.match(source, /export const maxDuration = 30/);
   assert.match(source, /streamText\(\{/);
-  assert.match(source, /convertToModelMessages\(/);
+  assert.match(source, /await convertToModelMessages\(/);
   assert.match(source, /toUIMessageStreamResponse\(\)/);
   assert.doesNotMatch(source, /import \{[^}]*toUIMessageStream/);
 });
@@ -56,7 +56,7 @@ test("recall chat route rebuilds safe text-only messages before model conversion
     /const modelMessages = buildRecallChatModelMessagesFromText\(latestUserText\)/,
   );
   const retrievalQueryIndex = source.search(/query: latestUserText/);
-  const convertIndex = source.search(/convertToModelMessages\(modelMessages\)/);
+  const convertIndex = source.search(/await convertToModelMessages\(modelMessages\)/);
 
   assert.ok(parseIndex > -1);
   assert.ok(trimIndex > -1);
