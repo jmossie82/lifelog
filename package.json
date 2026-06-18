@@ -11,8 +11,11 @@
     "test": "node --conditions react-server --test --experimental-strip-types tests/*.test.ts"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.0",
+    "@ai-sdk/react": "^2.0.0",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.2",
+    "ai": "^5.0.0",
     "lucide-react": "^0.468.0",
     "next": "16.2.9",
     "react": "19.2.0",
