@@ -21,6 +21,9 @@ test("dashboard primary navigation links Recall to the chat page", () => {
   assert.match(dashboardSource, /\{ label: "Timeline", href: "\/", icon: BarChart3 \}/);
   assert.match(dashboardSource, /\{ label: "Recall", href: "\/chat", icon: MessageSquareText \}/);
   assert.match(dashboardSource, /<Link[\s\S]*href=\{item\.href\}/);
+  assert.match(dashboardSource, /item\.label === "Timeline" && pathname === "\/"/);
+  assert.match(dashboardSource, /pathname === item\.href/);
+  assert.doesNotMatch(dashboardSource, /const isActive = item\.label === "Timeline"/);
   assert.doesNotMatch(
     dashboardSource,
     /label: "Recall"[\s\S]{0,120}<a[\s\S]{0,120}href="#"/,

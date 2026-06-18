@@ -367,7 +367,10 @@ export function LifelogDashboard({
         <nav className="nav-list">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = item.label === "Timeline";
+            const isActive =
+              item.href === "/"
+                ? item.label === "Timeline" && pathname === "/"
+                : pathname === item.href;
             return (
               <Link
                 aria-current={isActive ? "page" : undefined}
