@@ -7,6 +7,7 @@ import {
   buildRecallChatSystemPrompt,
   extractLatestUserText,
   getRecallChatSafeErrorMessage,
+  parseRecallChatMessages,
   trimRecallChatHistory,
 } from "../lib/lifelog/recall-chat.ts";
 
@@ -83,6 +84,49 @@ test("buildRecallChatSystemPrompt embeds only bounded cited source fields", () =
   assert.match(prompt, /Invoice follow-up/);
   assert.match(prompt, /Discussed sending the June invoice/);
   assert.doesNotMatch(prompt, /conversation-1/);
+});
+
+test("buildRecallChatSystemPrompt bounds long source fields", () => {
+  const longTitle = `${"t".repeat(800)}TITLE_TAIL`;
+  const longSummary = `${"s".repeat(800)}SUMMARY_TAIL`;
+  const longKeyword = `${"k".repeat(800)}KEYWORD_TAIL`;
+
+  const prompt = buildRecallChatSystemPrompt([
+    {
+      citationId: "S1",
+      conversationId: "conversation-1",
+      title: longTitle,
+      summary: longSummary,
+      startedAt: null,
+      keywords: [longKeyword],
+      similarity: 0.91,
+    },
+  ]);
+
+  assert.match(prompt, new RegExp("t{800}"));
+  assert.match(prompt, new RegExp("s{800}"));
+  assert.match(prompt, new RegExp("k{800}"));
+  assert.doesNotMatch(prompt, /TITLE_TAIL/);
+  assert.doesNotMatch(prompt, /SUMMARY_TAIL/);
+  assert.doesNotMatch(prompt, /KEYWORD_TAIL/);
+});
+
+test("parseRecallChatMessages filters unknown values by role and parts shape", () => {
+  const parsed = parseRecallChatMessages([
+    null,
+    "message",
+    { id: "missing-role", parts: [] },
+    { id: "non-string-role", role: 1, parts: [] },
+    { id: "non-array-parts", role: "assistant", parts: "hello" },
+    userMessage("valid-user", "hello"),
+    { id: "valid-tool", role: "tool", parts: [] },
+  ]);
+
+  assert.deepEqual(
+    parsed.map((message) => message.id),
+    ["valid-user", "valid-tool"],
+  );
+  assert.deepEqual(parseRecallChatMessages({ role: "user", parts: [] }), []);
 });
 
 test("getRecallChatSafeErrorMessage avoids raw private details", () => {
