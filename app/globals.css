@@ -876,46 +876,65 @@ button {
   min-height: 260px;
 }
 
-.chat-thread {
+.grounded-answer {
   display: grid;
   gap: 10px;
-  margin: 8px 0 12px;
+  margin-top: 8px;
 }
 
-.chat-bubble {
-  max-width: 86%;
+.grounded-answer p,
+.recall-empty {
   margin: 0;
-  padding: 12px;
-  border-radius: 8px;
+  color: #293330;
   font-size: 13px;
   line-height: 1.45;
 }
 
-.chat-bubble.user {
-  justify-self: end;
-  color: #173b2f;
-  background: var(--green-soft);
+.grounded-answer-insufficient_evidence p,
+.grounded-answer-error p {
+  color: #8a1f38;
 }
 
-.chat-bubble.assistant {
-  color: #293330;
-  background: #f3f6f5;
-}
-
-.chat-form {
+.grounded-citations {
   display: grid;
-  grid-template-columns: 1fr 34px;
-  align-items: center;
-  min-height: 40px;
-  padding-left: 11px;
-  border: 1px solid var(--border-strong);
-  border-radius: 7px;
+  gap: 8px;
 }
 
-.chat-form button {
-  height: 100%;
+.grounded-citations a {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 38px;
+  padding: 8px 10px;
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #f3f6f5;
+  text-decoration: none;
+}
+
+.grounded-citations a:hover,
+.grounded-citations a:focus-visible {
+  border-color: var(--green);
+}
+
+.grounded-citations a:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+}
+
+.grounded-citations strong {
   color: var(--green);
-  border-left: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.grounded-citations span {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 1180px) {

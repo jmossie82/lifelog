@@ -8,6 +8,7 @@ function readRequiredEnv(name: string) {
 
 export const DEFAULT_DISPLAY_TIME_ZONE = "America/Chicago";
 export const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
+export const DEFAULT_RECALL_ANSWER_MODEL = "gpt-5.5";
 
 function assertValidTimeZone(value: string) {
   try {
@@ -74,5 +75,13 @@ export function getOpenAiEmbeddingEnv() {
   return {
     openAiApiKey: readRequiredEnv("OPENAI_API_KEY"),
     embeddingModel,
+  };
+}
+
+export function getOpenAiRecallEnv() {
+  return {
+    openAiApiKey: readRequiredEnv("OPENAI_API_KEY"),
+    recallAnswerModel:
+      process.env.LIFELOG_RECALL_ANSWER_MODEL ?? DEFAULT_RECALL_ANSWER_MODEL,
   };
 }

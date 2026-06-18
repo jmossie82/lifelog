@@ -81,6 +81,27 @@ test("dashboard exposes semantic recall search and embedding action", () => {
   assert.match(source, /Embed conversations/);
 });
 
+test("dashboard renders grounded recall answers with cited conversation links", () => {
+  assert.match(source, /GroundedRecallAnswerView/);
+  assert.match(source, /Recall answer/);
+  assert.match(source, /semanticRecall\.answer/);
+  assert.match(source, /answer\.citations\.map/);
+  assert.match(source, /citation\.citationId/);
+  assert.match(source, /citation\.conversationId/);
+  assert.match(source, /Search semantic recall to generate an answer/);
+  assert.doesNotMatch(source, /Recall preview/);
+  assert.doesNotMatch(source, /Preview a recall query/);
+});
+
+test("dashboard styles grounded recall states without chat preview selectors", () => {
+  assert.match(styles, /\.grounded-answer/);
+  assert.match(styles, /\.grounded-answer-insufficient_evidence/);
+  assert.match(styles, /\.grounded-citations a/);
+  assert.match(styles, /\.grounded-citations a:focus-visible\s*\{[\s\S]*outline: 2px solid var\(--green\);/);
+  assert.doesNotMatch(styles, /\.chat-thread/);
+  assert.doesNotMatch(styles, /\.chat-bubble/);
+});
+
 test("dashboard preserves semantic recall in URL navigation and detail links", () => {
   assert.match(source, /if \(semanticRecall\.query\) params\.set\("recall", semanticRecall\.query\)/);
   assert.match(source, /navigateWith\(\{ recall: recall \|\| null \}\)/);

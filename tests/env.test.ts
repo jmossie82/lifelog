@@ -3,7 +3,9 @@ import { afterEach, test } from "node:test";
 
 import {
   DEFAULT_DISPLAY_TIME_ZONE,
+  DEFAULT_RECALL_ANSWER_MODEL,
   getOpenAiEmbeddingEnv,
+  getOpenAiRecallEnv,
   getClientEnv,
   getDisplayTimeZone,
   getFieldyEnv,
@@ -147,4 +149,18 @@ test("getOpenAiEmbeddingEnv rejects unsupported embedding models", () => {
     () => getOpenAiEmbeddingEnv(),
     /LIFELOG_EMBEDDING_MODEL must be text-embedding-3-small/,
   );
+});
+
+test("getOpenAiRecallEnv returns server-only recall answer settings", () => {
+  process.env.OPENAI_API_KEY = "sk-test-openai";
+  delete process.env.LIFELOG_RECALL_ANSWER_MODEL;
+
+  assert.deepEqual(getOpenAiRecallEnv(), {
+    openAiApiKey: "sk-test-openai",
+    recallAnswerModel: DEFAULT_RECALL_ANSWER_MODEL,
+  });
+
+  process.env.LIFELOG_RECALL_ANSWER_MODEL = "gpt-5.5-mini";
+
+  assert.equal(getOpenAiRecallEnv().recallAnswerModel, "gpt-5.5-mini");
 });

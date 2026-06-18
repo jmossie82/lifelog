@@ -14,13 +14,12 @@ import {
   Mic2,
   RefreshCcw,
   Search,
-  SendHorizontal,
   Settings,
   Sparkles,
   Tags,
   UsersRound,
 } from "lucide-react";
-import { useActionState, useMemo, useState, useTransition } from "react";
+import { useActionState, useMemo, useTransition } from "react";
 import { embedConversations } from "@/app/actions/embed-conversations";
 import { backfillFieldy } from "@/app/actions/backfill-fieldy";
 import {
@@ -29,6 +28,7 @@ import {
 } from "@/lib/lifelog/backfill-action-state";
 import type { DashboardData } from "@/lib/lifelog/dashboard-data";
 import type { DashboardConversationFilterType } from "@/lib/lifelog/dashboard-query";
+import type { GroundedRecallAnswer } from "@/lib/lifelog/grounded-recall";
 import {
   initialEmbedConversationsActionState,
   type EmbedConversationsActionState,
@@ -188,6 +188,7 @@ export function LifelogDashboard({
   semanticRecall: {
     query: string;
     results: SemanticRecallResult[];
+    answer?: GroundedRecallAnswer | null;
   };
 }) {
   const router = useRouter();
@@ -206,12 +207,6 @@ export function LifelogDashboard({
       formData: FormData,
     ) => Promise<EmbedConversationsActionState>,
     initialEmbedConversationsActionState,
-  );
-  const [chatInput, setChatInput] = useState("");
-  const [recallAnswer, setRecallAnswer] = useState(
-    data.conversations.length > 0
-      ? `Preview: ${data.conversations.length} imported Fieldy conversations and ${data.openTaskCount} open action items.`
-      : "Run a manual sync to import your recent Fieldy history.",
   );
 
   const conversationTitleById = useMemo(() => {
@@ -355,19 +350,6 @@ export function LifelogDashboard({
         ? AlertCircle
         : RefreshCcw;
   const syncStatusClassName = `sync-status sync-status-${data.lastSyncDisplay?.status ?? "idle"}`;
-
-  function handleRecallSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const trimmed = chatInput.trim();
-    if (!trimmed) return;
-
-    setRecallAnswer(
-      data.conversations.length > 0
-        ? `Preview: ${openTaskCount} open action items across ${data.conversations.length} imported conversations connected to "${trimmed}".`
-        : `Preview: no imported conversations are available for "${trimmed}" yet. Run a manual sync to backfill Fieldy data.`,
-    );
-    setChatInput("");
-  }
 
   return (
     <main className="app-shell">
@@ -698,33 +680,54 @@ export function LifelogDashboard({
               <div className="rail-header">
                 <h2>
                   <Sparkles aria-hidden="true" size={18} />
-                  Recall preview
+                  Recall answer
                 </h2>
-                <button aria-label="Refresh recall" type="button">
-                  <RefreshCcw aria-hidden="true" size={16} />
-                </button>
+                <span>{semanticRecall.answer?.citations.length ?? 0}</span>
               </div>
-              <div className="chat-thread">
-                <p className="chat-bubble user">Promise from last week</p>
-                <p className="chat-bubble assistant">{recallAnswer}</p>
-              </div>
-              <form className="chat-form" onSubmit={handleRecallSubmit}>
-                <input
-                  aria-label="Preview a recall query"
-                  onChange={(event) => setChatInput(event.target.value)}
-                  placeholder="Preview a recall summary..."
-                  type="text"
-                  value={chatInput}
+              {semanticRecall.answer ? (
+                <GroundedRecallAnswerView
+                  answer={semanticRecall.answer}
+                  currentFromQuery={currentFromQuery}
                 />
-                <button aria-label="Preview recall query" type="submit">
-                  <SendHorizontal aria-hidden="true" size={19} />
-                </button>
-              </form>
+              ) : (
+                <p className="recall-empty">
+                  Search semantic recall to generate an answer from your imported conversations.
+                </p>
+              )}
             </section>
           </aside>
         </div>
       </section>
     </main>
+  );
+}
+
+function GroundedRecallAnswerView({
+  answer,
+  currentFromQuery,
+}: {
+  answer: GroundedRecallAnswer;
+  currentFromQuery: string;
+}) {
+  return (
+    <div className={`grounded-answer grounded-answer-${answer.status}`}>
+      <p>{answer.answer}</p>
+      {answer.citations.length > 0 ? (
+        <div className="grounded-citations" aria-label="Recall answer sources">
+          {answer.citations.map((citation) => (
+            <Link
+              href={`/conversations/${citation.conversationId}${
+                currentFromQuery ? `?from=${encodeURIComponent(currentFromQuery)}` : ""
+              }`}
+              key={citation.citationId}
+            >
+              <strong>{citation.citationId}</strong>
+              <span>{citation.title}</span>
+            </Link>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
