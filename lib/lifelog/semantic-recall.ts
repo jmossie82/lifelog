@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import type { GroundedRecallAnswer } from "@/lib/lifelog/grounded-recall";
 import type { Database } from "@/lib/supabase/types";
 
 export const RECALL_MAX_QUERY_LENGTH = 300;
@@ -19,6 +20,7 @@ export type SemanticRecallResult = {
 export type SemanticRecallSearchResult = {
   query: string;
   results: SemanticRecallResult[];
+  answer?: GroundedRecallAnswer | null;
 };
 
 export function normalizeRecallQuery(value: string) {

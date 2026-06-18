@@ -3,12 +3,18 @@ import { LifelogDashboard } from "@/components/lifelog-dashboard";
 import {
   getDisplayTimeZone,
   getOpenAiEmbeddingEnv,
+  getOpenAiRecallEnv,
   getOwnerUserId,
 } from "@/lib/env";
 import { getDashboardData } from "@/lib/lifelog/dashboard-data";
 import { normalizeDashboardQuery } from "@/lib/lifelog/dashboard-query";
 import { readFirstSearchParam } from "@/lib/lifelog/conversation-detail-route";
+import {
+  answerGroundedRecall,
+  getGroundedRecallErrorAnswer,
+} from "@/lib/lifelog/grounded-recall";
 import { createOpenAiEmbeddingClient } from "@/lib/lifelog/openai-embeddings";
+import { createOpenAiResponsesClient } from "@/lib/lifelog/openai-responses";
 import {
   normalizeRecallQuery,
   searchSemanticRecall,
@@ -47,7 +53,11 @@ export default async function Home({
   const recallQuery = normalizeRecallQuery(
     readFirstSearchParam(resolvedSearchParams.recall),
   );
-  let semanticRecall: SemanticRecallSearchResult = { query: "", results: [] };
+  let semanticRecall: SemanticRecallSearchResult = {
+    query: "",
+    results: [],
+    answer: null,
+  };
 
   if (recallQuery) {
     try {
@@ -60,8 +70,26 @@ export default async function Home({
           embeddingModel,
         }).embedText,
       });
+
+      try {
+        const { recallAnswerModel } = getOpenAiRecallEnv();
+        semanticRecall.answer = await answerGroundedRecall({
+          query: semanticRecall.query,
+          results: semanticRecall.results,
+          generateAnswer: createOpenAiResponsesClient({
+            apiKey: openAiApiKey,
+            model: recallAnswerModel,
+          }).createGroundedRecallAnswer,
+        });
+      } catch {
+        semanticRecall.answer = getGroundedRecallErrorAnswer();
+      }
     } catch {
-      semanticRecall = { query: recallQuery, results: [] };
+      semanticRecall = {
+        query: recallQuery,
+        results: [],
+        answer: getGroundedRecallErrorAnswer(),
+      };
     }
   }
 

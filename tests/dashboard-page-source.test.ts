@@ -16,3 +16,12 @@ test("dashboard page passes normalized query and display timezone to getDashboar
   assert.match(source, /query: dashboardQuery/);
   assert.match(source, /displayTimeZone/);
 });
+
+test("dashboard page generates grounded recall answers after semantic retrieval", () => {
+  assert.match(source, /searchSemanticRecall/);
+  assert.match(source, /answerGroundedRecall/);
+  assert.match(source, /createOpenAiResponsesClient/);
+  assert.match(source, /getOpenAiRecallEnv/);
+  assert.match(source, /semanticRecall\.answer/);
+  assert.match(source, /getGroundedRecallErrorAnswer/);
+});

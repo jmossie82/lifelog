@@ -22,11 +22,13 @@ FIELDY_BACKFILL_DAYS=30
 LIFELOG_DISPLAY_TIME_ZONE=America/Chicago
 OPENAI_API_KEY=sk-...
 LIFELOG_EMBEDDING_MODEL=text-embedding-3-small
+LIFELOG_RECALL_ANSWER_MODEL=gpt-5.5
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY`, `FIELDY_API_KEY`, `FIELDY_WEBHOOK_SECRET`, and `OPENAI_API_KEY` are server-only secrets. Do not expose them with a `NEXT_PUBLIC_` prefix.
 `LIFELOG_DISPLAY_TIME_ZONE` is optional and defaults to `America/Chicago`; set it to the owner's IANA time zone for dashboard grouping and display.
 `LIFELOG_EMBEDDING_MODEL` is optional and currently must be `text-embedding-3-small`.
+`LIFELOG_RECALL_ANSWER_MODEL` is optional and defaults to `gpt-5.5`; it is used only for grounded Recall answers after semantic matches are retrieved.
 
 ## Supabase Setup
 
@@ -64,7 +66,7 @@ Fieldy public webhook docs currently describe completed transcription payloads. 
 
 ## Verification
 
-After importing Fieldy conversations, run **Embed conversations** from the dashboard before using Semantic recall. Embeddings are private app data and should be treated like transcript content.
+After importing Fieldy conversations, run **Embed conversations** from the dashboard before using Semantic recall. Embeddings and generated Recall answers are private app data and should be treated like transcript content.
 
 ```bash
 npm test
