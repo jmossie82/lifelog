@@ -53,6 +53,46 @@ export function buildRecallChatModelMessagesFromText(text: string): UIMessage[] 
   ];
 }
 
+export function buildRecallChatModelMessagesForTurn({
+  storedMessages,
+  latestUserText,
+}: {
+  storedMessages: UIMessage[];
+  latestUserText: string;
+}): UIMessage[] {
+  const normalizedText = normalizeRecallChatUserText(latestUserText);
+  const trustedHistory = trimRecallChatHistory(storedMessages).flatMap((message) => {
+    if (message.role !== "user" && message.role !== "assistant") return [];
+    const text = normalizeRecallChatUserText(
+      message.parts
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join(" "),
+    );
+    if (!text) return [];
+    return [
+      {
+        id: message.id,
+        role: message.role,
+        parts: [{ type: "text" as const, text }],
+      },
+    ];
+  });
+
+  if (!normalizedText) {
+    return trustedHistory;
+  }
+
+  return [
+    ...trustedHistory,
+    {
+      id: "recall-chat-latest-user-message",
+      role: "user" as const,
+      parts: [{ type: "text" as const, text: normalizedText }],
+    },
+  ];
+}
+
 export function trimRecallChatHistory<T>(messages: T[]) {
   return messages.slice(-RECALL_CHAT_MAX_HISTORY_MESSAGES);
 }
