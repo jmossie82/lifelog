@@ -59,14 +59,14 @@ type Task = {
 };
 
 const navItems = [
-  { label: "Timeline", icon: BarChart3 },
-  { label: "Search", icon: Search },
-  { label: "Recall", icon: MessageSquareText },
-  { label: "Tasks", icon: ListChecks },
-  { label: "Insights", icon: Tags },
-  { label: "Calendar", icon: CalendarDays },
-  { label: "Contacts", icon: UsersRound },
-  { label: "Settings", icon: Settings },
+  { label: "Timeline", href: "/", icon: BarChart3 },
+  { label: "Search", href: null, icon: Search },
+  { label: "Recall", href: "/chat", icon: MessageSquareText },
+  { label: "Tasks", href: null, icon: ListChecks },
+  { label: "Insights", href: null, icon: Tags },
+  { label: "Calendar", href: null, icon: CalendarDays },
+  { label: "Contacts", href: null, icon: UsersRound },
+  { label: "Settings", href: null, icon: Settings },
 ];
 
 const tabs: Array<{ label: string; value: DashboardConversationFilterType }> = [
@@ -367,17 +367,30 @@ export function LifelogDashboard({
         <nav className="nav-list">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = item.label === "Timeline";
-            return (
-              <a
+            const isActive = item.href ? pathname === item.href : false;
+
+            return item.href ? (
+              <Link
                 aria-current={isActive ? "page" : undefined}
                 className={isActive ? "nav-item is-active" : "nav-item"}
-                href="#"
+                href={item.href}
                 key={item.label}
               >
                 <Icon aria-hidden="true" size={19} strokeWidth={1.9} />
                 <span>{item.label}</span>
-              </a>
+              </Link>
+            ) : (
+              <button
+                aria-disabled="true"
+                className="nav-item is-disabled"
+                disabled
+                key={item.label}
+                title="Coming soon"
+                type="button"
+              >
+                <Icon aria-hidden="true" size={19} strokeWidth={1.9} />
+                <span>{item.label}</span>
+              </button>
             );
           })}
         </nav>
