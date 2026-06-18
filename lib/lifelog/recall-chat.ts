@@ -43,10 +43,12 @@ export function parseRecallChatMessages(value: unknown): UIMessage[] {
   }
 
   return value.filter((message): message is UIMessage => {
+    const role = (message as { role?: unknown } | null)?.role;
+
     return (
       message !== null &&
       typeof message === "object" &&
-      typeof (message as { role?: unknown }).role === "string" &&
+      (role === "user" || role === "assistant" || role === "system") &&
       Array.isArray((message as { parts?: unknown }).parts)
     );
   });
@@ -76,6 +78,7 @@ export function buildRecallChatSystemPrompt(sources: GroundedRecallSource[]) {
 }
 
 export function getRecallChatSafeErrorMessage(_error: unknown) {
+  void _error;
   return "Recall Chat failed. Try again or use dashboard search.";
 }
 

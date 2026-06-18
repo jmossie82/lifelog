@@ -119,12 +119,14 @@ test("parseRecallChatMessages filters unknown values by role and parts shape", (
     { id: "non-string-role", role: 1, parts: [] },
     { id: "non-array-parts", role: "assistant", parts: "hello" },
     userMessage("valid-user", "hello"),
+    assistantMessage("valid-assistant", "hi"),
+    { id: "valid-system", role: "system", parts: [] },
     { id: "valid-tool", role: "tool", parts: [] },
   ]);
 
   assert.deepEqual(
     parsed.map((message) => message.id),
-    ["valid-user", "valid-tool"],
+    ["valid-user", "valid-assistant", "valid-system"],
   );
   assert.deepEqual(parseRecallChatMessages({ role: "user", parts: [] }), []);
 });
