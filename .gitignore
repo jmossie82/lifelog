@@ -21,6 +21,8 @@
 .worktrees/
 .playwright-mcp/
 .superpowers/
+supabase/.temp/
+.supabase/
 
 # debug
 npm-debug.log*
