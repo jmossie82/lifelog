@@ -16,7 +16,10 @@ import {
 } from "@/lib/lifelog/recall-chat";
 import { buildGroundedRecallSources } from "@/lib/lifelog/grounded-recall";
 import { createOpenAiEmbeddingClient } from "@/lib/lifelog/openai-embeddings";
-import { searchSemanticRecall } from "@/lib/lifelog/semantic-recall";
+import {
+  normalizeRecallQuery,
+  searchSemanticRecall,
+} from "@/lib/lifelog/semantic-recall";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const maxDuration = 30;
@@ -36,7 +39,7 @@ export async function POST(request: Request) {
     const messages = trimRecallChatHistory(
       parseRecallChatMessages(body.messages),
     );
-    const latestUserText = extractLatestUserText(messages);
+    const latestUserText = normalizeRecallQuery(extractLatestUserText(messages));
 
     if (!latestUserText) {
       return Response.json({ error: "Message is required" }, { status: 400 });

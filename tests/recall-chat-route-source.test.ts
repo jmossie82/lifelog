@@ -35,6 +35,7 @@ test("recall chat route retrieves private lifelog context", () => {
   assert.match(source, /parseRecallChatMessages/);
   assert.match(source, /trimRecallChatHistory/);
   assert.match(source, /extractLatestUserText/);
+  assert.match(source, /normalizeRecallQuery/);
   assert.match(source, /buildRecallChatModelMessagesFromText/);
   assert.match(source, /getOpenAiEmbeddingEnv\(\)/);
   assert.match(source, /getOpenAiRecallEnv\(\)/);
@@ -48,7 +49,9 @@ test("recall chat route retrieves private lifelog context", () => {
 test("recall chat route rebuilds safe text-only messages before model conversion", () => {
   const parseIndex = source.search(/parseRecallChatMessages\(body\.messages\)/);
   const trimIndex = source.search(/trimRecallChatHistory\(/);
-  const latestTextIndex = source.search(/const latestUserText = extractLatestUserText\(messages\)/);
+  const latestTextIndex = source.search(
+    /const latestUserText = normalizeRecallQuery\(extractLatestUserText\(messages\)\)/,
+  );
   const modelMessagesIndex = source.search(
     /const modelMessages = buildRecallChatModelMessagesFromText\(latestUserText\)/,
   );
