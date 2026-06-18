@@ -97,6 +97,7 @@ test("dashboard styles grounded recall states without chat preview selectors", (
   assert.match(styles, /\.grounded-answer/);
   assert.match(styles, /\.grounded-answer-insufficient_evidence/);
   assert.match(styles, /\.grounded-citations a/);
+  assert.match(styles, /\.grounded-citations a:focus-visible\s*\{[\s\S]*outline: 2px solid var\(--green\);/);
   assert.doesNotMatch(styles, /\.chat-thread/);
   assert.doesNotMatch(styles, /\.chat-bubble/);
 });

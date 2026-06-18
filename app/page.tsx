@@ -82,7 +82,9 @@ export default async function Home({
           }).createGroundedRecallAnswer,
         });
       } catch {
-        semanticRecall.answer = getGroundedRecallErrorAnswer();
+        semanticRecall.answer = getGroundedRecallErrorAnswer(
+          semanticRecall.results.length > 0,
+        );
       }
     } catch {
       semanticRecall = {

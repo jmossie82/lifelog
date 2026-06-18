@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   answerGroundedRecall,
   buildGroundedRecallSources,
+  getGroundedRecallErrorAnswer,
   GROUNDED_RECALL_MAX_SOURCES,
   type GroundedRecallModelAnswer,
 } from "../lib/lifelog/grounded-recall.ts";
@@ -103,6 +104,21 @@ test("answerGroundedRecall preserves model abstentions", async () => {
   assert.deepEqual(answer, {
     status: "insufficient_evidence",
     answer: "I cannot answer from the retrieved entries.",
+    citations: [],
+  });
+});
+
+test("getGroundedRecallErrorAnswer distinguishes retrieval and generation failures", () => {
+  assert.deepEqual(getGroundedRecallErrorAnswer(), {
+    status: "error",
+    answer: "Recall search failed. Try again or use regular dashboard search.",
+    citations: [],
+  });
+
+  assert.deepEqual(getGroundedRecallErrorAnswer(true), {
+    status: "error",
+    answer:
+      "Recall answer generation failed. The semantic matches are still available to inspect.",
     citations: [],
   });
 });

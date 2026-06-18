@@ -919,6 +919,11 @@ button {
   border-color: var(--green);
 }
 
+.grounded-citations a:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+}
+
 .grounded-citations strong {
   color: var(--green);
   font-size: 12px;

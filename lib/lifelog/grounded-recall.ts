@@ -100,11 +100,14 @@ export async function answerGroundedRecall({
   };
 }
 
-export function getGroundedRecallErrorAnswer(): GroundedRecallAnswer {
+export function getGroundedRecallErrorAnswer(
+  hasSemanticMatches = false,
+): GroundedRecallAnswer {
   return {
     status: "error",
-    answer:
-      "Recall answer generation failed. The semantic matches are still available to inspect.",
+    answer: hasSemanticMatches
+      ? "Recall answer generation failed. The semantic matches are still available to inspect."
+      : "Recall search failed. Try again or use regular dashboard search.",
     citations: [],
   };
 }

@@ -1,9 +1,11 @@
 import "server-only";
 
-import type {
-  GroundedRecallModelAnswer,
-  GroundedRecallSource,
-} from "@/lib/lifelog/grounded-recall";
+import {
+  GROUNDED_RECALL_MAX_ANSWER_LENGTH,
+  GROUNDED_RECALL_MAX_SOURCES,
+  type GroundedRecallModelAnswer,
+  type GroundedRecallSource,
+} from "./grounded-recall.ts";
 
 type FetchLike = typeof fetch;
 
@@ -19,7 +21,6 @@ type ResponsesPayload = {
 };
 
 export const OPENAI_RESPONSES_TIMEOUT_MS = 45_000;
-const GROUNDED_RECALL_MAX_SCHEMA_CITATIONS = 5;
 
 class OpenAiResponsesStatusError extends Error {}
 
@@ -55,6 +56,7 @@ export function createOpenAiResponsesClient({
         signal: controller.signal,
         body: JSON.stringify({
           model,
+          store: false,
           input: buildGroundedRecallInput(query, sources),
           text: {
             format: {
@@ -187,12 +189,12 @@ const GROUNDED_RECALL_ANSWER_SCHEMA = {
     },
     answer: {
       type: "string",
-      maxLength: 1600,
+      maxLength: GROUNDED_RECALL_MAX_ANSWER_LENGTH,
     },
     citationIds: {
       type: "array",
       items: { type: "string" },
-      maxItems: GROUNDED_RECALL_MAX_SCHEMA_CITATIONS,
+      maxItems: GROUNDED_RECALL_MAX_SOURCES,
     },
   },
   required: ["status", "answer", "citationIds"],
