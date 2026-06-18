@@ -45,6 +45,17 @@ test("recall chat route retrieves private lifelog context", () => {
   assert.match(source, /buildRecallChatSystemPrompt/);
 });
 
+test("recall chat route filters request messages before model conversion", () => {
+  const parseIndex = source.search(/parseRecallChatMessages\(body\.messages\)/);
+  const trimIndex = source.search(/trimRecallChatHistory\(/);
+  const convertIndex = source.search(/convertToModelMessages\(messages as UIMessage\[\]\)/);
+
+  assert.ok(parseIndex > -1);
+  assert.ok(trimIndex > -1);
+  assert.ok(convertIndex > parseIndex);
+  assert.ok(convertIndex > trimIndex);
+});
+
 test("recall chat route returns safe errors without raw private details", () => {
   assert.match(source, /catch\s*\(\s*error\s*\)\s*\{/);
   assert.match(source, /getRecallChatSafeErrorMessage\(error\)/);

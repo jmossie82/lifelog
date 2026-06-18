@@ -111,7 +111,7 @@ test("buildRecallChatSystemPrompt bounds long source fields", () => {
   assert.doesNotMatch(prompt, /KEYWORD_TAIL/);
 });
 
-test("parseRecallChatMessages filters unknown values by role and parts shape", () => {
+test("parseRecallChatMessages filters client system and unknown roles", () => {
   const parsed = parseRecallChatMessages([
     null,
     "message",
@@ -126,7 +126,7 @@ test("parseRecallChatMessages filters unknown values by role and parts shape", (
 
   assert.deepEqual(
     parsed.map((message) => message.id),
-    ["valid-user", "valid-assistant", "valid-system"],
+    ["valid-user", "valid-assistant"],
   );
   assert.deepEqual(parseRecallChatMessages({ role: "user", parts: [] }), []);
 });

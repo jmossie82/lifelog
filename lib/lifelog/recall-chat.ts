@@ -48,7 +48,7 @@ export function parseRecallChatMessages(value: unknown): UIMessage[] {
     return (
       message !== null &&
       typeof message === "object" &&
-      (role === "user" || role === "assistant" || role === "system") &&
+      (role === "user" || role === "assistant") &&
       Array.isArray((message as { parts?: unknown }).parts)
     );
   });
