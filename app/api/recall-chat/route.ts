@@ -1,5 +1,5 @@
 import { openai } from "@ai-sdk/openai";
-import { convertToModelMessages, streamText, type UIMessage } from "ai";
+import { convertToModelMessages, streamText } from "ai";
 
 import {
   getOpenAiEmbeddingEnv,
@@ -7,6 +7,7 @@ import {
   getOwnerUserId,
 } from "@/lib/env";
 import {
+  buildRecallChatModelMessagesFromText,
   buildRecallChatSystemPrompt,
   extractLatestUserText,
   getRecallChatSafeErrorMessage,
@@ -41,6 +42,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "Message is required" }, { status: 400 });
     }
 
+    const modelMessages = buildRecallChatModelMessagesFromText(latestUserText);
     const { openAiApiKey, embeddingModel } = getOpenAiEmbeddingEnv();
     const { recallAnswerModel } = getOpenAiRecallEnv();
     const { embedText } = createOpenAiEmbeddingClient({
@@ -56,7 +58,7 @@ export async function POST(request: Request) {
     const result = streamText({
       model: openai(recallAnswerModel),
       system: buildRecallChatSystemPrompt(sources),
-      messages: convertToModelMessages(messages as UIMessage[]),
+      messages: convertToModelMessages(modelMessages),
     });
 
     return result.toUIMessageStreamResponse();

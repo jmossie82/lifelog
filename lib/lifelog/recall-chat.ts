@@ -18,19 +18,39 @@ export function extractLatestUserText(messages: MessageLike[]) {
       continue;
     }
 
-    const text = (message.parts ?? [])
-      .filter((part) => part.type === "text" && typeof part.text === "string")
-      .map((part) => part.text)
-      .join(" ")
-      .trim()
-      .replace(/\s+/g, " ");
+    const text = normalizeRecallChatUserText(
+      (message.parts ?? [])
+        .filter((part) => part.type === "text" && typeof part.text === "string")
+        .map((part) => part.text)
+        .join(" "),
+    );
 
     if (text) {
-      return text.slice(0, RECALL_CHAT_MAX_USER_TEXT_LENGTH);
+      return text;
     }
   }
 
   return "";
+}
+
+export function buildRecallChatModelMessages(messages: MessageLike[]) {
+  return buildRecallChatModelMessagesFromText(extractLatestUserText(messages));
+}
+
+export function buildRecallChatModelMessagesFromText(text: string): UIMessage[] {
+  const normalizedText = normalizeRecallChatUserText(text);
+
+  if (!normalizedText) {
+    return [];
+  }
+
+  return [
+    {
+      id: "recall-chat-latest-user-message",
+      role: "user",
+      parts: [{ type: "text", text: normalizedText }],
+    },
+  ];
 }
 
 export function trimRecallChatHistory<T>(messages: T[]) {
@@ -84,4 +104,11 @@ export function getRecallChatSafeErrorMessage(_error: unknown) {
 
 function sanitizePromptField(value: string) {
   return value.trim().replace(/\s+/g, " ").slice(0, 800);
+}
+
+function normalizeRecallChatUserText(value: string) {
+  return value
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, RECALL_CHAT_MAX_USER_TEXT_LENGTH);
 }

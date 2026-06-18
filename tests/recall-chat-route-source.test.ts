@@ -8,7 +8,6 @@ test("recall chat route streams UI messages with AI SDK 5", () => {
   assert.match(source, /import \{ openai \} from "@ai-sdk\/openai";/);
   assert.match(source, /convertToModelMessages/);
   assert.match(source, /streamText/);
-  assert.match(source, /type UIMessage/);
   assert.match(source, /export const maxDuration = 30/);
   assert.match(source, /streamText\(\{/);
   assert.match(source, /convertToModelMessages\(/);
@@ -36,6 +35,7 @@ test("recall chat route retrieves private lifelog context", () => {
   assert.match(source, /parseRecallChatMessages/);
   assert.match(source, /trimRecallChatHistory/);
   assert.match(source, /extractLatestUserText/);
+  assert.match(source, /buildRecallChatModelMessagesFromText/);
   assert.match(source, /getOpenAiEmbeddingEnv\(\)/);
   assert.match(source, /getOpenAiRecallEnv\(\)/);
   assert.match(source, /searchSemanticRecall/);
@@ -45,15 +45,24 @@ test("recall chat route retrieves private lifelog context", () => {
   assert.match(source, /buildRecallChatSystemPrompt/);
 });
 
-test("recall chat route filters request messages before model conversion", () => {
+test("recall chat route rebuilds safe text-only messages before model conversion", () => {
   const parseIndex = source.search(/parseRecallChatMessages\(body\.messages\)/);
   const trimIndex = source.search(/trimRecallChatHistory\(/);
-  const convertIndex = source.search(/convertToModelMessages\(messages as UIMessage\[\]\)/);
+  const latestTextIndex = source.search(/const latestUserText = extractLatestUserText\(messages\)/);
+  const modelMessagesIndex = source.search(
+    /const modelMessages = buildRecallChatModelMessagesFromText\(latestUserText\)/,
+  );
+  const retrievalQueryIndex = source.search(/query: latestUserText/);
+  const convertIndex = source.search(/convertToModelMessages\(modelMessages\)/);
 
   assert.ok(parseIndex > -1);
   assert.ok(trimIndex > -1);
-  assert.ok(convertIndex > parseIndex);
-  assert.ok(convertIndex > trimIndex);
+  assert.ok(latestTextIndex > trimIndex);
+  assert.ok(modelMessagesIndex > latestTextIndex);
+  assert.ok(retrievalQueryIndex > modelMessagesIndex);
+  assert.ok(convertIndex > modelMessagesIndex);
+  assert.doesNotMatch(source, /convertToModelMessages\(messages/);
+  assert.doesNotMatch(source, /convertToModelMessages\(body\.messages/);
 });
 
 test("recall chat route returns safe errors without raw private details", () => {
