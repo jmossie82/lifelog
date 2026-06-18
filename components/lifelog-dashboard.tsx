@@ -59,14 +59,14 @@ type Task = {
 };
 
 const navItems = [
-  { label: "Timeline", icon: BarChart3 },
-  { label: "Search", icon: Search },
-  { label: "Recall", icon: MessageSquareText },
-  { label: "Tasks", icon: ListChecks },
-  { label: "Insights", icon: Tags },
-  { label: "Calendar", icon: CalendarDays },
-  { label: "Contacts", icon: UsersRound },
-  { label: "Settings", icon: Settings },
+  { label: "Timeline", href: "/", icon: BarChart3 },
+  { label: "Search", href: "/", icon: Search },
+  { label: "Recall", href: "/chat", icon: MessageSquareText },
+  { label: "Tasks", href: "/", icon: ListChecks },
+  { label: "Insights", href: "/", icon: Tags },
+  { label: "Calendar", href: "/", icon: CalendarDays },
+  { label: "Contacts", href: "/", icon: UsersRound },
+  { label: "Settings", href: "/", icon: Settings },
 ];
 
 const tabs: Array<{ label: string; value: DashboardConversationFilterType }> = [
@@ -369,15 +369,15 @@ export function LifelogDashboard({
             const Icon = item.icon;
             const isActive = item.label === "Timeline";
             return (
-              <a
+              <Link
                 aria-current={isActive ? "page" : undefined}
                 className={isActive ? "nav-item is-active" : "nav-item"}
-                href="#"
+                href={item.href}
                 key={item.label}
               >
                 <Icon aria-hidden="true" size={19} strokeWidth={1.9} />
                 <span>{item.label}</span>
-              </a>
+              </Link>
             );
           })}
         </nav>
