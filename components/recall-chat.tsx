@@ -1,19 +1,58 @@
 "use client";
 
+import type { UIMessage } from "ai";
+import type { RecallChatSessionSummary } from "@/lib/lifelog/recall-chat-persistence";
+
 import { DefaultChatTransport } from "ai";
 import { useChat } from "@ai-sdk/react";
 import { ArrowLeft, Bot, Loader2, Send, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
-export function RecallChat() {
+export function RecallChat({
+  initialMessages,
+  initialSessions,
+  selectedChatId: initialSelectedChatId,
+}: {
+  initialMessages: UIMessage[];
+  initialSessions: RecallChatSessionSummary[];
+  selectedChatId: string | null;
+}) {
   const [input, setInput] = useState("");
-  const transport = useMemo(
-    () => new DefaultChatTransport({ api: "/api/recall-chat" }),
-    [],
+  const [initialChatMessages, setInitialChatMessages] = useState(initialMessages);
+  const [activeChatId, setActiveChatId] = useState(
+    initialSelectedChatId ?? crypto.randomUUID(),
   );
-  const { error, messages, sendMessage, status } = useChat({ transport });
+  const selectedChatId = activeChatId;
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: "/api/recall-chat",
+        prepareSendMessagesRequest({ messages }) {
+          return {
+            body: {
+              chatId: selectedChatId,
+              messages,
+            },
+          };
+        },
+      }),
+    [selectedChatId],
+  );
+  const { error, messages, sendMessage, setMessages, status } = useChat({
+    id: selectedChatId,
+    messages: initialChatMessages,
+    transport,
+  });
   const isWorking = status === "streaming" || status === "submitted";
+
+  function handleNewChat() {
+    const nextChatId = crypto.randomUUID();
+    setInitialChatMessages([]);
+    setActiveChatId(nextChatId);
+    setMessages([]);
+    window.history.replaceState(null, "", "/chat");
+  }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -37,6 +76,23 @@ export function RecallChat() {
             <h1>Ask Recall</h1>
           </div>
         </header>
+
+        <aside className="chat-session-list" aria-label="Recall chat sessions">
+          <button type="button" onClick={handleNewChat}>
+            New chat
+          </button>
+          {initialSessions.map((session) => (
+            <Link
+              aria-current={session.id === selectedChatId ? "page" : undefined}
+              className="chat-session-link"
+              href={`/chat?chat=${session.id}`}
+              key={session.id}
+            >
+              <strong>{session.title}</strong>
+              <span>{session.messageCount} messages</span>
+            </Link>
+          ))}
+        </aside>
 
         <div className="recall-thread" aria-live="polite">
           {messages.length === 0 ? (

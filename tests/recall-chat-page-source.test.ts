@@ -15,7 +15,22 @@ test("recall chat page enforces owner authentication", () => {
   assert.match(pageSource, /if \(error \|\| !user\) \{\s*redirect\("\/login"\);/);
   assert.match(pageSource, /user\.id !== getOwnerUserId\(\)/);
   assert.match(pageSource, /redirect\("\/login\?error=invalid_credentials"\)/);
-  assert.match(pageSource, /<RecallChat \/>/);
+  assert.match(pageSource, /<RecallChat[\s\S]*initialMessages=\{initialMessages\}/);
+});
+
+test("recall chat page loads owner sessions and selected stored messages", () => {
+  assert.match(pageSource, /searchParams:\s*Promise<Record<string, string \| string\[\] \| undefined>>/);
+  assert.match(pageSource, /readFirstSearchParam/);
+  assert.match(pageSource, /normalizeRecallChatSessionId/);
+  assert.match(pageSource, /getRecallChatSession/);
+  assert.match(pageSource, /getRecallChatSessions/);
+  assert.match(pageSource, /getRecallChatMessages/);
+  assert.match(pageSource, /selectedSession/);
+  assert.match(pageSource, /displayedSessions/);
+  assert.match(pageSource, /\[selectedSession, \.\.\.initialSessions\]/);
+  assert.match(pageSource, /initialSessions=/);
+  assert.match(pageSource, /initialMessages=/);
+  assert.match(pageSource, /selectedChatId=/);
 });
 
 test("dashboard primary navigation links Recall to the chat page", () => {

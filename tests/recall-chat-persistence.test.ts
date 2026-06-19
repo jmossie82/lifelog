@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   createRecallChatSessionTitle,
   ensureRecallChatSession,
+  getRecallChatSession,
   getRecallChatMessages,
   getRecallChatSessions,
   mapRecallChatMessageRow,
@@ -82,6 +83,83 @@ test("getRecallChatSessions queries only the owner rows ordered by recency", asy
     ["order", "updated_at", { ascending: false }],
     ["limit", 20],
   ]);
+});
+
+test("getRecallChatSession queries one owner session by id", async () => {
+  const calls: unknown[] = [];
+  const supabase = createFakeSupabase(calls, {
+    recall_chat_sessions: {
+      data: {
+        id: "00000000-0000-4000-8000-000000000001",
+        title: "Older selected question",
+        latest_user_text: "Older selected question",
+        source_count: 2,
+        message_count: 6,
+        created_at: "2026-06-17T12:00:00.000Z",
+        updated_at: "2026-06-17T12:30:00.000Z",
+      },
+      error: null,
+    },
+  });
+
+  const session = await getRecallChatSession(supabase, {
+    sessionId: "00000000-0000-4000-8000-000000000001",
+    userId: "user-1",
+  });
+
+  assert.deepEqual(calls, [
+    ["from", "recall_chat_sessions"],
+    ["select", "id, title, latest_user_text, source_count, message_count, created_at, updated_at"],
+    ["eq", "user_id", "user-1"],
+    ["eq", "id", "00000000-0000-4000-8000-000000000001"],
+    ["maybeSingle"],
+  ]);
+  assert.deepEqual(session, {
+    id: "00000000-0000-4000-8000-000000000001",
+    title: "Older selected question",
+    latestUserText: "Older selected question",
+    sourceCount: 2,
+    messageCount: 6,
+    createdAt: "2026-06-17T12:00:00.000Z",
+    updatedAt: "2026-06-17T12:30:00.000Z",
+  });
+});
+
+test("getRecallChatSession returns null when the owner session is missing", async () => {
+  const calls: unknown[] = [];
+  const supabase = createFakeSupabase(calls, {
+    recall_chat_sessions: { data: null, error: null },
+  });
+
+  const session = await getRecallChatSession(supabase, {
+    sessionId: "00000000-0000-4000-8000-000000000099",
+    userId: "user-1",
+  });
+
+  assert.equal(session, null);
+  assert.deepEqual(calls, [
+    ["from", "recall_chat_sessions"],
+    ["select", "id, title, latest_user_text, source_count, message_count, created_at, updated_at"],
+    ["eq", "user_id", "user-1"],
+    ["eq", "id", "00000000-0000-4000-8000-000000000099"],
+    ["maybeSingle"],
+  ]);
+});
+
+test("getRecallChatSession propagates Supabase errors", async () => {
+  const error = new Error("database unavailable");
+  const supabase = createFakeSupabase([], {
+    recall_chat_sessions: { data: null, error },
+  });
+
+  await assert.rejects(
+    () =>
+      getRecallChatSession(supabase, {
+        sessionId: "00000000-0000-4000-8000-000000000001",
+        userId: "user-1",
+      }),
+    error,
+  );
 });
 
 test("getRecallChatMessages queries only the owner session messages ordered oldest first", async () => {
@@ -256,6 +334,10 @@ function createFakeSupabase(calls: unknown[], results: Record<string, { data: un
         },
         single() {
           calls.push(["single"]);
+          return Promise.resolve(result);
+        },
+        maybeSingle() {
+          calls.push(["maybeSingle"]);
           return Promise.resolve(result);
         },
         then(resolve: (value: unknown) => void) {

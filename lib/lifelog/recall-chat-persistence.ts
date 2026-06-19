@@ -42,6 +42,8 @@ const UUID_PATTERN =
 // Short natural-language prompts can remain untruncated; titles above this threshold
 // are clipped to the exported 60-character storage/display length.
 const RECALL_CHAT_SESSION_TITLE_SOFT_TRUNCATE_THRESHOLD = 80;
+const RECALL_CHAT_SESSION_SELECT_COLUMNS =
+  "id, title, latest_user_text, source_count, message_count, created_at, updated_at";
 
 export function normalizeRecallChatSessionId(value: unknown) {
   return typeof value === "string" && UUID_PATTERN.test(value) ? value : null;
@@ -83,13 +85,28 @@ export function mapRecallChatMessageRow(row: RecallChatMessageRow): UIMessage {
 export async function getRecallChatSessions(supabase: LifelogSupabaseClient, { userId }: { userId: string }) {
   const { data, error } = await supabase
     .from("recall_chat_sessions")
-    .select("id, title, latest_user_text, source_count, message_count, created_at, updated_at")
+    .select(RECALL_CHAT_SESSION_SELECT_COLUMNS)
     .eq("user_id", userId)
     .order("updated_at", { ascending: false })
     .limit(RECALL_CHAT_MAX_SESSIONS);
 
   if (error) throw error;
   return (data ?? []).map(mapRecallChatSessionRow);
+}
+
+export async function getRecallChatSession(
+  supabase: LifelogSupabaseClient,
+  { sessionId, userId }: { sessionId: string; userId: string },
+) {
+  const { data, error } = await supabase
+    .from("recall_chat_sessions")
+    .select(RECALL_CHAT_SESSION_SELECT_COLUMNS)
+    .eq("user_id", userId)
+    .eq("id", sessionId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? mapRecallChatSessionRow(data as RecallChatSessionSummaryRow) : null;
 }
 
 export async function getRecallChatMessages(
@@ -132,7 +149,7 @@ export async function ensureRecallChatSession(
       },
       { onConflict: "user_id,id" },
     )
-    .select("id, title, latest_user_text, source_count, message_count, created_at, updated_at")
+    .select(RECALL_CHAT_SESSION_SELECT_COLUMNS)
     .single();
 
   if (error) throw error;
