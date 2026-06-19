@@ -298,7 +298,6 @@ test("saveRecallChatTurn saves user and assistant messages atomically with a sta
         chat_session_id: "00000000-0000-4000-8000-000000000001",
         turn_id_value: "00000000-0000-4000-8000-000000000002",
         latest_user_text_value: storedUserText,
-        source_count_value: 5,
         user_parts_value: [{ type: "text", text: storedUserText }],
         assistant_parts_value: [{ type: "text", text: "Answer [S1]" }],
         source_citations_value: storedSources,

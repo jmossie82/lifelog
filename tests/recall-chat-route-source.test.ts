@@ -46,6 +46,14 @@ test("recall chat route retrieves private lifelog context", () => {
   assert.match(source, /buildRecallChatSystemPrompt/);
 });
 
+test("recall chat route validates malformed request bodies as client errors", () => {
+  assert.match(source, /const parsedBody: unknown = await request\.json\(\)/);
+  assert.match(source, /typeof parsedBody !== "object"/);
+  assert.match(source, /parsedBody === null/);
+  assert.match(source, /Array\.isArray\(parsedBody\)/);
+  assert.match(source, /Response\.json\(\{ error: "Invalid request body" \}, \{ status: 400 \}\)/);
+});
+
 test("recall chat route rebuilds safe text-only messages before model conversion", () => {
   const parseIndex = source.search(/parseRecallChatMessages\(body\.messages\)/);
   const trimIndex = source.search(/trimRecallChatHistory\(/);
@@ -90,8 +98,20 @@ test("recall chat route persists completed UI messages with AI SDK onFinish", ()
   assert.match(source, /onFinish:\s*async \(\{ responseMessage, isAborted \}\)/);
   assert.match(source, /if \(isAborted\) return/);
   assert.match(source, /saveRecallChatTurn/);
-  assert.match(source, /const turnId =\s*deriveRecallChatTurnId\(chatId, extractLatestClientUserMessageId\(clientMessages\)\) \?\?\s*crypto\.randomUUID\(\)/);
+  assert.match(source, /const latestClientUserMessageId =\s*extractLatestClientUserMessageId\(clientMessages\)/);
+  assert.match(source, /Response\.json\(\{ error: "Message id is required" \}, \{ status: 400 \}\)/);
+  assert.match(source, /const turnId = deriveRecallChatTurnId\(chatId, latestClientUserMessageId\)/);
   assert.match(source, /turnId,/);
+
+  const onFinishIndex = source.search(/onFinish:\s*async/);
+  const abortIndex = source.search(/if \(isAborted\) return/);
+  const ensureIndex = source.search(/await ensureRecallChatSession/);
+  const saveIndex = source.search(/await saveRecallChatTurn/);
+
+  assert.ok(onFinishIndex > -1);
+  assert.ok(abortIndex > onFinishIndex);
+  assert.ok(ensureIndex > abortIndex);
+  assert.ok(saveIndex > ensureIndex);
 });
 
 test("recall chat route does not trust raw client history for persistence or model input", () => {
@@ -125,7 +145,8 @@ test("recall chat route derives a stable turn id from the latest client user mes
   assert.match(source, /message\?\.role !== "user"/);
   assert.match(source, /typeof message\.id !== "string"/);
   assert.match(source, /!hasTextPart\(message\.parts\)/);
-  assert.match(source, /function deriveRecallChatTurnId\(sessionId: string, clientMessageId: string \| null\)/);
+  assert.match(source, /function deriveRecallChatTurnId\(sessionId: string, clientMessageId: string\)/);
+  assert.doesNotMatch(source, /deriveRecallChatTurnId[\s\S]{0,120}return null/);
   assert.match(source, /recall-chat-turn:\$\{sessionId\}:\$\{clientMessageId\}/);
   assert.match(source, /hash\[6\] = \(hash\[6\] & 0x0f\) \| 0x50/);
   assert.match(source, /hash\[8\] = \(hash\[8\] & 0x3f\) \| 0x80/);

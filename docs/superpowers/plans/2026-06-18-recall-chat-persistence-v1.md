@@ -56,12 +56,12 @@ This slice does not add:
 - Create `tests/recall-chat-persistence.test.ts`: pure helper tests and fake-client query-shape tests.
 - Modify `lib/lifelog/recall-chat.ts`: add a bounded model-message builder that accepts trusted stored messages plus latest user text.
 - Modify `tests/recall-chat.test.ts`: cover persisted-history model input bounds.
-- Modify `app/api/recall-chat/route.ts`: accept `chatId`, load/create session, load trusted messages, stream from server-built input, and persist on finish.
-- Modify `tests/recall-chat-route-source.test.ts`: assert persistence order and AI SDK stream callback usage.
-- Modify `app/chat/page.tsx`: load recent sessions and optional selected session.
-- Modify `components/recall-chat.tsx`: add session list, new-chat button, selected session id state, initial messages, and transport body.
-- Modify `tests/recall-chat-page-source.test.ts` and `tests/recall-chat-ui-source.test.ts`: assert page and UI contracts.
-- Modify `app/globals.css`: add restrained session-list styles within the existing chat page.
+- Modify `app/api/recall-chat/route.ts`: accept `chatId`, load trusted messages, stream from server-built input, and persist completed turns.
+- Extend `tests/recall-chat-route-source.test.ts`: assert persistence order and AI SDK stream callback usage.
+- Update `app/chat/page.tsx`: load recent sessions and optional selected session.
+- Enhance `components/recall-chat.tsx`: add session list, new-chat button, selected session id state, initial messages, and transport body.
+- Cover `tests/recall-chat-page-source.test.ts` and `tests/recall-chat-ui-source.test.ts`: assert page and UI contracts.
+- Style `app/globals.css`: add restrained session-list styles within the existing chat page.
 
 ---
 
@@ -95,6 +95,10 @@ test("recall chat persistence migration creates owner-scoped tables", () => {
     /foreign key \(user_id, session_id\) references public\.recall_chat_sessions\(user_id, id\) on delete cascade/,
   );
   assert.match(recallChatPersistenceMigration, /role text not null check \(role in \('user', 'assistant'\)\)/);
+  assert.match(recallChatPersistenceMigration, /turn_id uuid not null/);
+  assert.match(recallChatPersistenceMigration, /message_order integer not null check \(message_order > 0\)/);
+  assert.match(recallChatPersistenceMigration, /unique \(session_id, turn_id, role\)/);
+  assert.match(recallChatPersistenceMigration, /unique \(session_id, message_order\)/);
   assert.match(recallChatPersistenceMigration, /parts jsonb not null/);
   assert.match(recallChatPersistenceMigration, /source_citations jsonb not null default '\[\]'::jsonb/);
   assert.doesNotMatch(recallChatPersistenceMigration, /raw_prompt/);
@@ -158,20 +162,24 @@ create table public.recall_chat_messages (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   session_id uuid not null,
+  turn_id uuid not null,
+  message_order integer not null check (message_order > 0),
   role text not null check (role in ('user', 'assistant')),
   parts jsonb not null,
   source_citations jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
   foreign key (user_id, session_id)
     references public.recall_chat_sessions(user_id, id)
-    on delete cascade
+    on delete cascade,
+  unique (session_id, turn_id, role),
+  unique (session_id, message_order)
 );
 
 create index recall_chat_sessions_user_updated_at_idx
   on public.recall_chat_sessions (user_id, updated_at desc);
 
-create index recall_chat_messages_session_created_at_idx
-  on public.recall_chat_messages (session_id, created_at asc);
+create index recall_chat_messages_session_order_idx
+  on public.recall_chat_messages (session_id, message_order desc);
 
 create trigger recall_chat_sessions_set_updated_at
   before update on public.recall_chat_sessions
@@ -704,16 +712,16 @@ export async function getRecallChatMessages(
 ) {
   const { data, error } = await supabase
     .from("recall_chat_messages")
-    .select("id, role, parts, source_citations, created_at")
+    .select("id, role, parts, source_citations, message_order, created_at")
     .eq("user_id", userId)
     .eq("session_id", sessionId)
-    .order("created_at", { ascending: true })
+    .order("message_order", { ascending: false })
     .limit(RECALL_CHAT_MAX_STORED_MESSAGES);
 
   if (error) throw error;
-  return (data ?? []).map((row) =>
-    mapRecallChatMessageRow(row as RecallChatMessageRow),
-  );
+  return [...(data ?? [])]
+    .reverse()
+    .map((row) => mapRecallChatMessageRow(row as RecallChatMessageRow));
 }
 
 export async function ensureRecallChatSession(
@@ -737,7 +745,7 @@ export async function ensureRecallChatSession(
         title: createRecallChatSessionTitle(latestUserText),
         latest_user_text: latestUserText,
       },
-      { onConflict: "user_id,id", ignoreDuplicates: true },
+      { onConflict: "user_id,id" },
     )
     .select("id, title, latest_user_text, source_count, message_count, created_at, updated_at")
     .single();
@@ -753,47 +761,29 @@ export async function saveRecallChatTurn(
     responseMessage,
     sessionId,
     sources,
+    turnId,
     userId,
   }: {
     latestUserText: string;
     responseMessage: UIMessage;
     sessionId: string;
     sources: RecallChatSourceCitation[];
+    turnId: string;
     userId: string;
   },
 ) {
-  const userMessage = {
-    user_id: userId,
-    session_id: sessionId,
-    role: "user" as const,
-    parts: [{ type: "text", text: latestUserText }],
-    source_citations: [],
-  };
-  const assistantMessage = {
-    user_id: userId,
-    session_id: sessionId,
-    role: "assistant" as const,
-    parts: serializeRecallChatMessageParts(responseMessage.parts),
-    source_citations: sources,
-  };
+  const sourceCitations = serializeRecallChatSourceCitations(sources);
+  const { error } = await supabase.rpc("save_recall_chat_turn", {
+    session_user_id: userId,
+    chat_session_id: sessionId,
+    turn_id_value: turnId,
+    latest_user_text_value: latestUserText,
+    user_parts_value: [{ type: "text", text: latestUserText }],
+    assistant_parts_value: serializeRecallChatMessageParts(responseMessage.parts),
+    source_citations_value: sourceCitations,
+  });
 
-  const { error: insertError } = await supabase
-    .from("recall_chat_messages")
-    .insert([userMessage, assistantMessage]);
-
-  if (insertError) throw insertError;
-
-  const { error: updateError } = await supabase
-    .from("recall_chat_sessions")
-    .update({
-      latest_user_text: latestUserText,
-      source_count: sources.length,
-      message_count: 2,
-    })
-    .eq("user_id", userId)
-    .eq("id", sessionId);
-
-  if (updateError) throw updateError;
+  if (error) throw error;
 }
 
 function mapRecallChatSessionRow(row: RecallChatSessionRow): RecallChatSessionSummary {
@@ -809,30 +799,12 @@ function mapRecallChatSessionRow(row: RecallChatSessionRow): RecallChatSessionSu
 }
 ```
 
-- [ ] **Step 4: Fix message-count accumulation**
+- [ ] **Step 4: Keep turn save atomic and idempotent**
 
-Replace the `message_count: 2` update in `saveRecallChatTurn` with an RPC-free count read followed by an update:
-
-```ts
-  const { data: currentSession, error: sessionError } = await supabase
-    .from("recall_chat_sessions")
-    .select("message_count")
-    .eq("user_id", userId)
-    .eq("id", sessionId)
-    .single();
-
-  if (sessionError) throw sessionError;
-
-  const { error: updateError } = await supabase
-    .from("recall_chat_sessions")
-    .update({
-      latest_user_text: latestUserText,
-      source_count: sources.length,
-      message_count: ((currentSession?.message_count as number | undefined) ?? 0) + 2,
-    })
-    .eq("user_id", userId)
-    .eq("id", sessionId);
-```
+Use the `save_recall_chat_turn` RPC to insert both messages, derive `source_count`
+from `source_citations_value`, and increment `message_count` in the same
+transaction. The function should de-duplicate retries with
+`unique (session_id, turn_id, role)` and order messages with `message_order`.
 
 - [ ] **Step 5: Run persistence tests**
 
@@ -930,6 +902,10 @@ import {
   normalizeRecallChatSessionId,
   saveRecallChatTurn,
 } from "@/lib/lifelog/recall-chat-persistence";
+import {
+  normalizeRecallQuery,
+  searchSemanticRecall,
+} from "@/lib/lifelog/semantic-recall";
 ```
 
 - [ ] **Step 4: Update the route body handling and stream response**
@@ -937,10 +913,28 @@ import {
 Replace the body/session/model-message block in `POST` with:
 
 ```ts
-    const body = (await request.json()) as {
+    let body: {
       chatId?: unknown;
+      id?: unknown;
       messages?: unknown;
     };
+
+    try {
+      const parsedBody: unknown = await request.json();
+
+      if (
+        typeof parsedBody !== "object" ||
+        parsedBody === null ||
+        Array.isArray(parsedBody)
+      ) {
+        return Response.json({ error: "Invalid request body" }, { status: 400 });
+      }
+
+      body = parsedBody as typeof body;
+    } catch {
+      return Response.json({ error: "Invalid request body" }, { status: 400 });
+    }
+
     const clientMessages = trimRecallChatHistory(
       parseRecallChatMessages(body.messages),
     );
@@ -952,13 +946,18 @@ Replace the body/session/model-message block in `POST` with:
       return Response.json({ error: "Message is required" }, { status: 400 });
     }
 
-    const chatId = normalizeRecallChatSessionId(body.chatId) ?? crypto.randomUUID();
+    const chatId =
+      normalizeRecallChatSessionId(body.chatId) ??
+      deriveRecallChatSessionId(body.id) ??
+      crypto.randomUUID();
+    const latestClientUserMessageId =
+      extractLatestClientUserMessageId(clientMessages);
 
-    await ensureRecallChatSession(supabase, {
-      latestUserText,
-      sessionId: chatId,
-      userId: user.id,
-    });
+    if (!latestClientUserMessageId) {
+      return Response.json({ error: "Message id is required" }, { status: 400 });
+    }
+
+    const turnId = deriveRecallChatTurnId(chatId, latestClientUserMessageId);
 
     const storedMessages = await getRecallChatMessages(supabase, {
       sessionId: chatId,
@@ -992,6 +991,12 @@ with:
       onFinish: async ({ responseMessage, isAborted }) => {
         if (isAborted) return;
 
+        await ensureRecallChatSession(supabase, {
+          latestUserText,
+          sessionId: chatId,
+          userId: user.id,
+        });
+
         await saveRecallChatTurn(supabase, {
           latestUserText,
           responseMessage,
@@ -1001,6 +1006,7 @@ with:
             conversationId: source.conversationId,
             title: source.title,
           })),
+          turnId,
           userId: user.id,
         });
       },

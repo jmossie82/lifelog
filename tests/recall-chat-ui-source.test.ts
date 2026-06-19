@@ -9,7 +9,9 @@ test("recall chat uses AI SDK 6 transport to the recall route", () => {
   assert.match(source, /"use client";/);
   assert.match(source, /import \{ DefaultChatTransport \} from "ai";/);
   assert.match(source, /import \{ useChat \} from "@ai-sdk\/react";/);
-  assert.match(source, /useChat\(\{\s*id: selectedChatId,\s*messages: initialChatMessages,\s*transport,/);
+  assert.match(source, /import \{ useRouter \} from "next\/navigation";/);
+  assert.match(source, /const router = useRouter\(\)/);
+  assert.match(source, /useChat\(\{\s*id: selectedChatId,\s*messages: initialChatMessages,/);
   assert.match(source, /new DefaultChatTransport\(\{\s*api: "\/api\/recall-chat"/);
   assert.doesNotMatch(source, /useChat\(\{\s*api:/);
 });
@@ -49,6 +51,13 @@ test("recall chat UI clears selected-session messages before starting a new chat
     source,
     /function handleNewChat\(\) \{[\s\S]*setInitialChatMessages\(\[\]\)[\s\S]*setActiveChatId\(nextChatId\)[\s\S]*setMessages\(\[\]\)/,
   );
+});
+
+test("recall chat UI persists the active chat URL and refreshes history after completion", () => {
+  assert.match(source, /onFinish\(\) \{/);
+  assert.match(source, /window\.history\.replaceState\(null, "", `\/chat\?chat=\$\{selectedChatId\}`\)/);
+  assert.match(source, /router\.refresh\(\)/);
+  assert.match(source, /<button type="button" disabled=\{isWorking\} onClick=\{handleNewChat\}>/);
 });
 
 test("recall chat renders message text parts", () => {

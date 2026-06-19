@@ -127,7 +127,6 @@ export type Database = {
           chat_session_id: string;
           turn_id_value: string;
           latest_user_text_value: string;
-          source_count_value: number;
           user_parts_value: Json;
           assistant_parts_value: Json;
           source_citations_value: Json;

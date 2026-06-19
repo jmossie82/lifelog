@@ -240,16 +240,18 @@ test("recall chat persistence migration defines owner-checked atomic turn save r
   assert.match(recallChatPersistenceMigration, /insert into public\.recall_chat_messages/);
   assert.match(recallChatPersistenceMigration, /on conflict \(session_id, turn_id, role\) do nothing/);
   assert.match(recallChatPersistenceMigration, /get diagnostics inserted_message_count = row_count/);
+  assert.match(recallChatPersistenceMigration, /jsonb_typeof\(source_citations_value\) = 'array'/);
+  assert.match(recallChatPersistenceMigration, /jsonb_array_length\(source_citations_value\)/);
   assert.match(recallChatPersistenceMigration, /message_count = public\.recall_chat_sessions\.message_count \+ inserted_message_count/);
   assert.match(recallChatPersistenceMigration, /where id = chat_session_id/);
   assert.match(recallChatPersistenceMigration, /and user_id = session_user_id/);
   assert.match(recallChatPersistenceMigration, /and public\.is_lifelog_owner\(session_user_id\)/);
   assert.match(
     recallChatPersistenceMigration,
-    /revoke all on function public\.save_recall_chat_turn\(uuid, uuid, uuid, text, integer, jsonb, jsonb, jsonb\) from public;/,
+    /revoke all on function public\.save_recall_chat_turn\(uuid, uuid, uuid, text, jsonb, jsonb, jsonb\) from public;/,
   );
   assert.match(
     recallChatPersistenceMigration,
-    /grant execute on function public\.save_recall_chat_turn\(uuid, uuid, uuid, text, integer, jsonb, jsonb, jsonb\) to authenticated;/,
+    /grant execute on function public\.save_recall_chat_turn\(uuid, uuid, uuid, text, jsonb, jsonb, jsonb\) to authenticated;/,
   );
 });

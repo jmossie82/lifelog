@@ -45,11 +45,28 @@ export async function POST(request: Request) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = (await request.json()) as {
+    let body: {
       chatId?: unknown;
       id?: unknown;
       messages?: unknown;
     };
+
+    try {
+      const parsedBody: unknown = await request.json();
+
+      if (
+        typeof parsedBody !== "object" ||
+        parsedBody === null ||
+        Array.isArray(parsedBody)
+      ) {
+        return Response.json({ error: "Invalid request body" }, { status: 400 });
+      }
+
+      body = parsedBody as typeof body;
+    } catch {
+      return Response.json({ error: "Invalid request body" }, { status: 400 });
+    }
+
     const clientMessages = trimRecallChatHistory(
       parseRecallChatMessages(body.messages),
     );
@@ -65,15 +82,14 @@ export async function POST(request: Request) {
       normalizeRecallChatSessionId(body.chatId) ??
       deriveRecallChatSessionId(body.id) ??
       crypto.randomUUID();
-    const turnId =
-      deriveRecallChatTurnId(chatId, extractLatestClientUserMessageId(clientMessages)) ??
-      crypto.randomUUID();
+    const latestClientUserMessageId =
+      extractLatestClientUserMessageId(clientMessages);
 
-    await ensureRecallChatSession(supabase, {
-      latestUserText,
-      sessionId: chatId,
-      userId: user.id,
-    });
+    if (!latestClientUserMessageId) {
+      return Response.json({ error: "Message id is required" }, { status: 400 });
+    }
+
+    const turnId = deriveRecallChatTurnId(chatId, latestClientUserMessageId);
 
     const storedMessages = await getRecallChatMessages(supabase, {
       sessionId: chatId,
@@ -118,6 +134,12 @@ export async function POST(request: Request) {
       },
       onFinish: async ({ responseMessage, isAborted }) => {
         if (isAborted) return;
+
+        await ensureRecallChatSession(supabase, {
+          latestUserText,
+          sessionId: chatId,
+          userId: user.id,
+        });
 
         await saveRecallChatTurn(supabase, {
           latestUserText,
@@ -196,9 +218,7 @@ function extractLatestClientUserMessageId(
   return null;
 }
 
-function deriveRecallChatTurnId(sessionId: string, clientMessageId: string | null) {
-  if (!clientMessageId) return null;
-
+function deriveRecallChatTurnId(sessionId: string, clientMessageId: string) {
   const hash = createHash("sha256")
     .update(`recall-chat-turn:${sessionId}:${clientMessageId}`)
     .digest();

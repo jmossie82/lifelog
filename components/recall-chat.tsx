@@ -7,6 +7,7 @@ import { DefaultChatTransport } from "ai";
 import { useChat } from "@ai-sdk/react";
 import { ArrowLeft, Bot, Loader2, Send, UserRound } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 export function RecallChat({
@@ -18,6 +19,7 @@ export function RecallChat({
   initialSessions: RecallChatSessionSummary[];
   selectedChatId: string | null;
 }) {
+  const router = useRouter();
   const [input, setInput] = useState("");
   const [initialChatMessages, setInitialChatMessages] = useState(initialMessages);
   const [activeChatId, setActiveChatId] = useState(
@@ -42,6 +44,10 @@ export function RecallChat({
   const { error, messages, sendMessage, setMessages, status } = useChat({
     id: selectedChatId,
     messages: initialChatMessages,
+    onFinish() {
+      window.history.replaceState(null, "", `/chat?chat=${selectedChatId}`);
+      router.refresh();
+    },
     transport,
   });
   const isWorking = status === "streaming" || status === "submitted";
@@ -78,7 +84,7 @@ export function RecallChat({
         </header>
 
         <aside className="chat-session-list" aria-label="Recall chat sessions">
-          <button type="button" onClick={handleNewChat}>
+          <button type="button" disabled={isWorking} onClick={handleNewChat}>
             New chat
           </button>
           {initialSessions.map((session) => (

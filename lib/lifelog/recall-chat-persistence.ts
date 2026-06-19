@@ -122,8 +122,8 @@ export async function getRecallChatMessages(
     .limit(RECALL_CHAT_MAX_STORED_MESSAGES);
 
   if (error) throw error;
-  return (data ?? [])
-    .toReversed()
+  return [...(data ?? [])]
+    .reverse()
     .map((row) => mapRecallChatMessageRow(row as RecallChatMessageRow));
 }
 
@@ -183,7 +183,6 @@ export async function saveRecallChatTurn(
     chat_session_id: sessionId,
     turn_id_value: turnId,
     latest_user_text_value: storedLatestUserText,
-    source_count_value: sourceCitations.length,
     user_parts_value: [{ type: "text", text: storedLatestUserText }],
     assistant_parts_value: serializeRecallChatMessageParts(responseMessage.parts),
     source_citations_value: sourceCitations,

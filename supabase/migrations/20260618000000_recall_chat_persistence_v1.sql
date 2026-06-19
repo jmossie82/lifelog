@@ -77,7 +77,6 @@ create or replace function public.save_recall_chat_turn(
   chat_session_id uuid,
   turn_id_value uuid,
   latest_user_text_value text,
-  source_count_value integer,
   user_parts_value jsonb,
   assistant_parts_value jsonb,
   source_citations_value jsonb
@@ -144,7 +143,11 @@ begin
     update public.recall_chat_sessions
     set
       latest_user_text = latest_user_text_value,
-      source_count = source_count_value,
+      source_count = case
+        when jsonb_typeof(source_citations_value) = 'array'
+          then jsonb_array_length(source_citations_value)
+        else 0
+      end,
       message_count = public.recall_chat_sessions.message_count + inserted_message_count
     where id = chat_session_id
       and user_id = session_user_id
@@ -153,5 +156,5 @@ begin
 end;
 $$;
 
-revoke all on function public.save_recall_chat_turn(uuid, uuid, uuid, text, integer, jsonb, jsonb, jsonb) from public;
-grant execute on function public.save_recall_chat_turn(uuid, uuid, uuid, text, integer, jsonb, jsonb, jsonb) to authenticated;
+revoke all on function public.save_recall_chat_turn(uuid, uuid, uuid, text, jsonb, jsonb, jsonb) from public;
+grant execute on function public.save_recall_chat_turn(uuid, uuid, uuid, text, jsonb, jsonb, jsonb) to authenticated;
