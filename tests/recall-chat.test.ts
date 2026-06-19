@@ -6,6 +6,7 @@ import {
   RECALL_CHAT_MAX_USER_TEXT_LENGTH,
   buildRecallChatModelMessages,
   buildRecallChatModelMessagesFromText,
+  buildRecallChatModelMessagesForTurn,
   buildRecallChatSystemPrompt,
   extractLatestUserText,
   getRecallChatSafeErrorMessage,
@@ -116,6 +117,55 @@ test("buildRecallChatModelMessagesFromText normalizes and caps text", () => {
   assert.equal(messages[0]?.parts[0]?.type, "text");
   assert.equal(messages[0]?.parts[0]?.text.length, RECALL_CHAT_MAX_USER_TEXT_LENGTH);
   assert.doesNotMatch(messages[0]?.parts[0]?.text ?? "", /\s{2,}/);
+});
+
+test("buildRecallChatModelMessagesForTurn keeps trusted bounded history plus latest user text", () => {
+  const longStoredText = "stored ".repeat(RECALL_CHAT_MAX_USER_TEXT_LENGTH);
+  const messages = buildRecallChatModelMessagesForTurn({
+    storedMessages: [
+      {
+        id: "stored-user",
+        role: "user",
+        metadata: { ownerUserId: "owner-user-1", sourceCitations: ["S1"] },
+        privateConversationId: "conversation-1",
+        parts: [
+          { type: "text", text: `  Earlier   question ${longStoredText}` },
+          { type: "file", url: "file://private-transcript" },
+          {
+            type: "source-url",
+            sourceId: "source-1",
+            url: "https://private.example/transcript",
+            title: "Private transcript",
+          },
+          { type: "data-private", data: { ownerUserId: "owner-user-1" } },
+        ],
+      },
+      {
+        id: "stored-assistant",
+        role: "assistant",
+        metadata: { sourceCitations: [{ conversationId: "conversation-1", citationId: "S1" }] },
+        privateConversationId: "conversation-1",
+        parts: [
+          { type: "text", text: "Earlier answer" },
+          { type: "file", url: "file://assistant-private-note" },
+          { type: "data-source", data: { conversationId: "conversation-1" } },
+        ],
+      },
+    ] as unknown as Parameters<typeof buildRecallChatModelMessagesForTurn>[0]["storedMessages"],
+    latestUserText: "Latest question",
+  });
+
+  assert.deepEqual(messages.map((message) => message.role), ["user", "assistant", "user"]);
+  assert.equal(messages.at(-1)?.parts[0]?.type, "text");
+  assert.equal(messages[0]?.parts.length, 1);
+  assert.equal(messages[0]?.parts[0]?.type, "text");
+  assert.equal(messages[0]?.parts[0]?.text.length, RECALL_CHAT_MAX_USER_TEXT_LENGTH);
+  assert.deepEqual(Object.keys(messages[0] ?? {}).sort(), ["id", "parts", "role"]);
+  assert.deepEqual(Object.keys(messages[1] ?? {}).sort(), ["id", "parts", "role"]);
+  assert.doesNotMatch(
+    JSON.stringify(messages),
+    /owner-user-1|conversation-1|file:\/\/|private\.example|sourceCitations|privateConversationId/,
+  );
 });
 
 test("trimRecallChatHistory keeps the most recent bounded history", () => {

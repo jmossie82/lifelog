@@ -18,6 +18,14 @@ const normalizedSemanticRecallMigration = semanticRecallMigration
   .replace(/\s+/g, " ")
   .trim();
 
+const recallChatPersistenceMigration = readFileSync(
+  "supabase/migrations/20260618000000_recall_chat_persistence_v1.sql",
+  "utf8",
+);
+
+const normalizedRecallChatPersistenceMigration =
+  recallChatPersistenceMigration.replace(/\s+/g, " ").trim();
+
 function assertOwnerReadPolicy(table: string) {
   const policyTableName = table.replace("_", " ");
   const basePolicyPattern = `create policy "Owner can read ${policyTableName}" on public\\.${table} for select to authenticated`;
@@ -157,5 +165,93 @@ test("semantic recall match rpc keeps results owner scoped", () => {
   assert.doesNotMatch(
     normalizedSemanticRecallMigration,
     /grant execute on function public\.match_conversations[^;]+to public;/,
+  );
+});
+
+test("recall chat persistence migration creates owner-scoped tables", () => {
+  assert.match(recallChatPersistenceMigration, /create table public\.recall_chat_sessions/);
+  assert.match(recallChatPersistenceMigration, /create table public\.recall_chat_messages/);
+  assert.match(recallChatPersistenceMigration, /user_id uuid not null references auth\.users\(id\) on delete cascade/);
+  assert.match(recallChatPersistenceMigration, /unique \(user_id, id\)/);
+  assert.match(
+    normalizedRecallChatPersistenceMigration,
+    /foreign key \(user_id, session_id\) references public\.recall_chat_sessions\(user_id, id\) on delete cascade/,
+  );
+  assert.match(recallChatPersistenceMigration, /role text not null check \(role in \('user', 'assistant'\)\)/);
+  assert.match(recallChatPersistenceMigration, /parts jsonb not null/);
+  assert.match(recallChatPersistenceMigration, /source_citations jsonb not null default '\[\]'::jsonb/);
+  assert.doesNotMatch(recallChatPersistenceMigration, /raw_prompt/);
+  assert.doesNotMatch(recallChatPersistenceMigration, /api_key/);
+});
+
+test("recall chat persistence migration enables owner-only RLS writes", () => {
+  for (const table of ["recall_chat_sessions", "recall_chat_messages"]) {
+    assert.match(
+      recallChatPersistenceMigration,
+      new RegExp(`alter table public\\.${table} enable row level security`),
+    );
+    assert.match(
+      normalizedRecallChatPersistenceMigration,
+      new RegExp(`on public\\.${table} for select to authenticated using \\(public\\.is_lifelog_owner\\(user_id\\)\\);`),
+    );
+    assert.match(
+      normalizedRecallChatPersistenceMigration,
+      new RegExp(`on public\\.${table} for insert to authenticated with check \\(public\\.is_lifelog_owner\\(user_id\\)\\);`),
+    );
+    assert.match(
+      normalizedRecallChatPersistenceMigration,
+      new RegExp(`on public\\.${table} for update to authenticated using \\(public\\.is_lifelog_owner\\(user_id\\)\\) with check \\(public\\.is_lifelog_owner\\(user_id\\)\\);`),
+    );
+    assert.doesNotMatch(
+      normalizedRecallChatPersistenceMigration,
+      new RegExp(`grant [^;]+ on (?:table )?public\\.${table}[^;]*\\bto\\b[^;]*\\bpublic\\b[^;]*;`),
+    );
+    assert.doesNotMatch(
+      normalizedRecallChatPersistenceMigration,
+      /grant [^;]+ on all tables in schema public [^;]*\bto\b[^;]*\bpublic\b[^;]*;/,
+    );
+    assert.doesNotMatch(
+      normalizedRecallChatPersistenceMigration,
+      new RegExp(`create policy [^;]+ on public\\.${table}[^;]*\\bto public\\b[^;]*;`),
+    );
+  }
+});
+
+test("recall chat persistence migration defines ordered idempotent message storage", () => {
+  assert.match(recallChatPersistenceMigration, /turn_id uuid not null/);
+  assert.match(recallChatPersistenceMigration, /message_order integer not null check \(message_order > 0\)/);
+  assert.match(recallChatPersistenceMigration, /unique \(session_id, turn_id, role\)/);
+  assert.match(recallChatPersistenceMigration, /unique \(session_id, message_order\)/);
+  assert.match(
+    recallChatPersistenceMigration,
+    /create index recall_chat_messages_session_order_idx/,
+  );
+});
+
+test("recall chat persistence migration defines owner-checked atomic turn save rpc", () => {
+  assert.match(
+    recallChatPersistenceMigration,
+    /create or replace function public\.save_recall_chat_turn/,
+  );
+  assert.match(recallChatPersistenceMigration, /language plpgsql/);
+  assert.match(recallChatPersistenceMigration, /security invoker/);
+  assert.match(recallChatPersistenceMigration, /set search_path = ''/);
+  assert.match(recallChatPersistenceMigration, /for update/);
+  assert.match(recallChatPersistenceMigration, /insert into public\.recall_chat_messages/);
+  assert.match(recallChatPersistenceMigration, /on conflict \(session_id, turn_id, role\) do nothing/);
+  assert.match(recallChatPersistenceMigration, /get diagnostics inserted_message_count = row_count/);
+  assert.match(recallChatPersistenceMigration, /jsonb_typeof\(source_citations_value\) = 'array'/);
+  assert.match(recallChatPersistenceMigration, /jsonb_array_length\(source_citations_value\)/);
+  assert.match(recallChatPersistenceMigration, /message_count = public\.recall_chat_sessions\.message_count \+ inserted_message_count/);
+  assert.match(recallChatPersistenceMigration, /where id = chat_session_id/);
+  assert.match(recallChatPersistenceMigration, /and user_id = session_user_id/);
+  assert.match(recallChatPersistenceMigration, /and public\.is_lifelog_owner\(session_user_id\)/);
+  assert.match(
+    recallChatPersistenceMigration,
+    /revoke all on function public\.save_recall_chat_turn\(uuid, uuid, uuid, text, jsonb, jsonb, jsonb\) from public;/,
+  );
+  assert.match(
+    recallChatPersistenceMigration,
+    /grant execute on function public\.save_recall_chat_turn\(uuid, uuid, uuid, text, jsonb, jsonb, jsonb\) to authenticated;/,
   );
 });
