@@ -26,6 +26,15 @@ const recallChatPersistenceMigration = readFileSync(
 const normalizedRecallChatPersistenceMigration =
   recallChatPersistenceMigration.replace(/\s+/g, " ").trim();
 
+const advisorCleanupMigration = readFileSync(
+  "supabase/migrations/20260619143731_advisor_cleanup_v1.sql",
+  "utf8",
+);
+
+const normalizedAdvisorCleanupMigration = advisorCleanupMigration
+  .replace(/\s+/g, " ")
+  .trim();
+
 function assertOwnerReadPolicy(table: string) {
   const policyTableName = table.replace("_", " ");
   const basePolicyPattern = `create policy "Owner can read ${policyTableName}" on public\\.${table} for select to authenticated`;
@@ -254,4 +263,79 @@ test("recall chat persistence migration defines owner-checked atomic turn save r
     recallChatPersistenceMigration,
     /grant execute on function public\.save_recall_chat_turn\(uuid, uuid, uuid, text, jsonb, jsonb, jsonb\) to authenticated;/,
   );
+});
+
+test("advisor cleanup migration makes owner checks invoker-safe", () => {
+  assert.match(
+    normalizedAdvisorCleanupMigration,
+    /create policy "Owner can read owner config" on public\.lifelog_owner_config for select to authenticated using \(\(select auth\.uid\(\)\) = user_id\);/,
+  );
+  assert.match(
+    normalizedAdvisorCleanupMigration,
+    /revoke all on table public\.lifelog_owner_config from anon;/,
+  );
+  assert.match(
+    normalizedAdvisorCleanupMigration,
+    /revoke all on table public\.lifelog_owner_config from authenticated;/,
+  );
+  assert.match(
+    normalizedAdvisorCleanupMigration,
+    /grant select on table public\.lifelog_owner_config to authenticated;/,
+  );
+  assert.match(
+    advisorCleanupMigration,
+    /create or replace function public\.is_lifelog_owner\(row_user_id uuid\)/,
+  );
+  assert.match(advisorCleanupMigration, /security invoker/);
+  assert.match(advisorCleanupMigration, /set search_path = ''/);
+  assert.doesNotMatch(advisorCleanupMigration, /security definer/);
+  assert.match(
+    normalizedAdvisorCleanupMigration,
+    /revoke all on function public\.is_lifelog_owner\(uuid\) from anon;/,
+  );
+  assert.match(
+    normalizedAdvisorCleanupMigration,
+    /grant execute on function public\.is_lifelog_owner\(uuid\) to authenticated;/,
+  );
+});
+
+test("advisor cleanup migration hardens function grants and search paths", () => {
+  assert.match(
+    normalizedAdvisorCleanupMigration,
+    /alter function public\.set_updated_at\(\) set search_path = '';/,
+  );
+  assert.match(
+    normalizedAdvisorCleanupMigration,
+    /revoke all on function public\.set_updated_at\(\) from public;/,
+  );
+  assert.match(
+    normalizedAdvisorCleanupMigration,
+    /revoke all on function public\.set_updated_at\(\) from anon;/,
+  );
+  assert.match(
+    normalizedAdvisorCleanupMigration,
+    /revoke all on function public\.set_updated_at\(\) from authenticated;/,
+  );
+  assert.match(
+    normalizedAdvisorCleanupMigration,
+    /revoke all on function public\.match_conversations\( extensions\.vector\(1536\), integer, double precision \) from anon;/,
+  );
+  assert.match(
+    normalizedAdvisorCleanupMigration,
+    /revoke all on function public\.save_recall_chat_turn\(uuid, uuid, uuid, text, jsonb, jsonb, jsonb\) from anon;/,
+  );
+});
+
+test("advisor cleanup migration adds covering indexes for foreign keys", () => {
+  for (const indexName of [
+    "lifelog_owner_config_user_id_idx",
+    "recall_chat_messages_user_session_idx",
+    "tasks_user_conversation_idx",
+    "transcriptions_user_conversation_idx",
+  ]) {
+    assert.match(
+      advisorCleanupMigration,
+      new RegExp(`create index if not exists ${indexName}`),
+    );
+  }
 });
