@@ -217,23 +217,39 @@ test("recall chat persistence migration enables owner-only RLS writes", () => {
   }
 });
 
-test("recall chat persistence migration defines owner-checked atomic summary update rpc", () => {
+test("recall chat persistence migration defines ordered idempotent message storage", () => {
+  assert.match(recallChatPersistenceMigration, /turn_id uuid not null/);
+  assert.match(recallChatPersistenceMigration, /message_order integer not null check \(message_order > 0\)/);
+  assert.match(recallChatPersistenceMigration, /unique \(session_id, turn_id, role\)/);
+  assert.match(recallChatPersistenceMigration, /unique \(session_id, message_order\)/);
   assert.match(
     recallChatPersistenceMigration,
-    /create or replace function public\.update_recall_chat_session_summary/,
+    /create index recall_chat_messages_session_order_idx/,
   );
+});
+
+test("recall chat persistence migration defines owner-checked atomic turn save rpc", () => {
+  assert.match(
+    recallChatPersistenceMigration,
+    /create or replace function public\.save_recall_chat_turn/,
+  );
+  assert.match(recallChatPersistenceMigration, /language plpgsql/);
   assert.match(recallChatPersistenceMigration, /security invoker/);
   assert.match(recallChatPersistenceMigration, /set search_path = ''/);
-  assert.match(recallChatPersistenceMigration, /message_count = public\.recall_chat_sessions\.message_count \+ message_increment/);
+  assert.match(recallChatPersistenceMigration, /for update/);
+  assert.match(recallChatPersistenceMigration, /insert into public\.recall_chat_messages/);
+  assert.match(recallChatPersistenceMigration, /on conflict \(session_id, turn_id, role\) do nothing/);
+  assert.match(recallChatPersistenceMigration, /get diagnostics inserted_message_count = row_count/);
+  assert.match(recallChatPersistenceMigration, /message_count = public\.recall_chat_sessions\.message_count \+ inserted_message_count/);
   assert.match(recallChatPersistenceMigration, /where id = chat_session_id/);
   assert.match(recallChatPersistenceMigration, /and user_id = session_user_id/);
   assert.match(recallChatPersistenceMigration, /and public\.is_lifelog_owner\(session_user_id\)/);
   assert.match(
     recallChatPersistenceMigration,
-    /revoke all on function public\.update_recall_chat_session_summary\(uuid, uuid, text, integer, integer\) from public;/,
+    /revoke all on function public\.save_recall_chat_turn\(uuid, uuid, uuid, text, integer, jsonb, jsonb, jsonb\) from public;/,
   );
   assert.match(
     recallChatPersistenceMigration,
-    /grant execute on function public\.update_recall_chat_session_summary\(uuid, uuid, text, integer, integer\) to authenticated;/,
+    /grant execute on function public\.save_recall_chat_turn\(uuid, uuid, uuid, text, integer, jsonb, jsonb, jsonb\) to authenticated;/,
   );
 });

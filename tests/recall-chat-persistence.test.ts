@@ -57,7 +57,9 @@ test("mapRecallChatMessageRow returns a UI message with safe text parts", () => 
       parts: [{ type: "text", text: "Answer [S1]" }],
       source_citations: [{ citationId: "S1", conversationId: "conversation-1", title: "Sales call" }],
       created_at: "2026-06-18T12:00:00.000Z",
+      message_order: 2,
       session_id: "session-1",
+      turn_id: "turn-1",
       user_id: "user-1",
     }),
     {
@@ -162,25 +164,49 @@ test("getRecallChatSession propagates Supabase errors", async () => {
   );
 });
 
-test("getRecallChatMessages queries only the owner session messages ordered oldest first", async () => {
+test("getRecallChatMessages queries only the newest owner session messages and returns them oldest first", async () => {
   const calls: unknown[] = [];
   const supabase = createFakeSupabase(calls, {
-    recall_chat_messages: { data: [], error: null },
+    recall_chat_messages: {
+      data: [
+        {
+          id: "message-3",
+          role: "user",
+          parts: [{ type: "text", text: "newer" }],
+          source_citations: [],
+          message_order: 3,
+          created_at: "2026-06-18T12:02:00.000Z",
+        },
+        {
+          id: "message-2",
+          role: "assistant",
+          parts: [{ type: "text", text: "older" }],
+          source_citations: [],
+          message_order: 2,
+          created_at: "2026-06-18T12:01:00.000Z",
+        },
+      ],
+      error: null,
+    },
   });
 
-  await getRecallChatMessages(supabase, {
+  const messages = await getRecallChatMessages(supabase, {
     sessionId: "00000000-0000-4000-8000-000000000001",
     userId: "user-1",
   });
 
   assert.deepEqual(calls, [
     ["from", "recall_chat_messages"],
-    ["select", "id, role, parts, source_citations, created_at"],
+    ["select", "id, role, parts, source_citations, message_order, created_at"],
     ["eq", "user_id", "user-1"],
     ["eq", "session_id", "00000000-0000-4000-8000-000000000001"],
-    ["order", "created_at", { ascending: true }],
+    ["order", "message_order", { ascending: false }],
     ["limit", 40],
   ]);
+  assert.deepEqual(
+    messages.map((message) => message.id),
+    ["message-2", "message-3"],
+  );
 });
 
 test("ensureRecallChatSession inserts a titled session when id is new", async () => {
@@ -223,7 +249,7 @@ test("ensureRecallChatSession inserts a titled session when id is new", async ()
   ]);
 });
 
-test("saveRecallChatTurn inserts user and assistant messages then updates the session summary", async () => {
+test("saveRecallChatTurn saves user and assistant messages atomically with a stable turn id", async () => {
   const calls: unknown[] = [];
   const dirtyUserText = `  ${"x".repeat(1200)}   `;
   const storedUserText = "x".repeat(1000);
@@ -244,8 +270,7 @@ test("saveRecallChatTurn inserts user and assistant messages then updates the se
     { citationId: "S5", conversationId: "conversation-5", title: "Roadmap" },
   ];
   const supabase = createFakeSupabase(calls, {
-    recall_chat_messages: { data: null, error: null },
-    update_recall_chat_session_summary: { data: null, error: null },
+    save_recall_chat_turn: { data: null, error: null },
   });
 
   await saveRecallChatTurn(supabase, {
@@ -261,38 +286,22 @@ test("saveRecallChatTurn inserts user and assistant messages then updates the se
       ],
     },
     sources,
+    turnId: "00000000-0000-4000-8000-000000000002",
   });
 
   assert.deepEqual(calls, [
-    ["from", "recall_chat_messages"],
-    [
-      "insert",
-      [
-        {
-          user_id: "user-1",
-          session_id: "00000000-0000-4000-8000-000000000001",
-          role: "user",
-          parts: [{ type: "text", text: storedUserText }],
-          source_citations: [],
-        },
-        {
-          user_id: "user-1",
-          session_id: "00000000-0000-4000-8000-000000000001",
-          role: "assistant",
-          parts: [{ type: "text", text: "Answer [S1]" }],
-          source_citations: storedSources,
-        },
-      ],
-    ],
     [
       "rpc",
-      "update_recall_chat_session_summary",
+      "save_recall_chat_turn",
       {
         session_user_id: "user-1",
         chat_session_id: "00000000-0000-4000-8000-000000000001",
+        turn_id_value: "00000000-0000-4000-8000-000000000002",
         latest_user_text_value: storedUserText,
         source_count_value: 5,
-        message_increment: 2,
+        user_parts_value: [{ type: "text", text: storedUserText }],
+        assistant_parts_value: [{ type: "text", text: "Answer [S1]" }],
+        source_citations_value: storedSources,
       },
     ],
   ]);

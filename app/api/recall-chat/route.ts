@@ -65,6 +65,9 @@ export async function POST(request: Request) {
       normalizeRecallChatSessionId(body.chatId) ??
       deriveRecallChatSessionId(body.id) ??
       crypto.randomUUID();
+    const turnId =
+      deriveRecallChatTurnId(chatId, extractLatestClientUserMessageId(clientMessages)) ??
+      crypto.randomUUID();
 
     await ensureRecallChatSession(supabase, {
       latestUserText,
@@ -125,6 +128,7 @@ export async function POST(request: Request) {
             conversationId: source.conversationId,
             title: source.title,
           })),
+          turnId,
           userId: user.id,
         });
       },
@@ -162,4 +166,68 @@ function deriveRecallChatSessionId(value: unknown) {
     hash.subarray(8, 10).toString("hex"),
     hash.subarray(10, 16).toString("hex"),
   ].join("-");
+}
+
+function extractLatestClientUserMessageId(
+  messages: Array<{ id?: unknown; role?: unknown; parts?: unknown }>,
+) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+
+    if (
+      message?.role !== "user" ||
+      typeof message.id !== "string" ||
+      !hasTextPart(message.parts)
+    ) {
+      continue;
+    }
+
+    const id = message.id.trim();
+
+    if (
+      id.length > 0 &&
+      id.length <= 128 &&
+      RECALL_CHAT_AI_SDK_ID_PATTERN.test(id)
+    ) {
+      return id;
+    }
+  }
+
+  return null;
+}
+
+function deriveRecallChatTurnId(sessionId: string, clientMessageId: string | null) {
+  if (!clientMessageId) return null;
+
+  const hash = createHash("sha256")
+    .update(`recall-chat-turn:${sessionId}:${clientMessageId}`)
+    .digest();
+
+  hash[6] = (hash[6] & 0x0f) | 0x50;
+  hash[8] = (hash[8] & 0x3f) | 0x80;
+
+  return [
+    hash.subarray(0, 4).toString("hex"),
+    hash.subarray(4, 6).toString("hex"),
+    hash.subarray(6, 8).toString("hex"),
+    hash.subarray(8, 10).toString("hex"),
+    hash.subarray(10, 16).toString("hex"),
+  ].join("-");
+}
+
+function hasTextPart(parts: unknown) {
+  return (
+    Array.isArray(parts) &&
+    parts.some((part) => {
+      if (typeof part !== "object" || part === null) return false;
+
+      const candidate = part as { type?: unknown; text?: unknown };
+
+      return (
+        candidate.type === "text" &&
+        typeof candidate.text === "string" &&
+        candidate.text.trim().length > 0
+      );
+    })
+  );
 }

@@ -115,14 +115,16 @@ export async function getRecallChatMessages(
 ) {
   const { data, error } = await supabase
     .from("recall_chat_messages")
-    .select("id, role, parts, source_citations, created_at")
+    .select("id, role, parts, source_citations, message_order, created_at")
     .eq("user_id", userId)
     .eq("session_id", sessionId)
-    .order("created_at", { ascending: true })
+    .order("message_order", { ascending: false })
     .limit(RECALL_CHAT_MAX_STORED_MESSAGES);
 
   if (error) throw error;
-  return (data ?? []).map((row) => mapRecallChatMessageRow(row as RecallChatMessageRow));
+  return (data ?? [])
+    .toReversed()
+    .map((row) => mapRecallChatMessageRow(row as RecallChatMessageRow));
 }
 
 export async function ensureRecallChatSession(
@@ -163,45 +165,31 @@ export async function saveRecallChatTurn(
     responseMessage,
     sessionId,
     sources,
+    turnId,
     userId,
   }: {
     latestUserText: string;
     responseMessage: UIMessage;
     sessionId: string;
     sources: RecallChatSourceCitation[];
+    turnId: string;
     userId: string;
   },
 ) {
   const storedLatestUserText = normalizeStoredText(latestUserText);
   const sourceCitations = serializeRecallChatSourceCitations(sources);
-  const userMessage = {
-    user_id: userId,
-    session_id: sessionId,
-    role: "user" as const,
-    parts: [{ type: "text", text: storedLatestUserText }],
-    source_citations: [],
-  };
-  const assistantMessage = {
-    user_id: userId,
-    session_id: sessionId,
-    role: "assistant" as const,
-    parts: serializeRecallChatMessageParts(responseMessage.parts),
-    source_citations: sourceCitations,
-  };
-
-  const { error: insertError } = await supabase.from("recall_chat_messages").insert([userMessage, assistantMessage]);
-
-  if (insertError) throw insertError;
-
-  const { error: updateError } = await supabase.rpc("update_recall_chat_session_summary", {
+  const { error } = await supabase.rpc("save_recall_chat_turn", {
     session_user_id: userId,
     chat_session_id: sessionId,
+    turn_id_value: turnId,
     latest_user_text_value: storedLatestUserText,
     source_count_value: sourceCitations.length,
-    message_increment: 2,
+    user_parts_value: [{ type: "text", text: storedLatestUserText }],
+    assistant_parts_value: serializeRecallChatMessageParts(responseMessage.parts),
+    source_citations_value: sourceCitations,
   });
 
-  if (updateError) throw updateError;
+  if (error) throw error;
 }
 
 function mapRecallChatSessionRow(row: RecallChatSessionSummaryRow): RecallChatSessionSummary {

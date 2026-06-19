@@ -55,6 +55,8 @@ export type Database = {
         id: string;
         user_id: string;
         session_id: string;
+        turn_id: string;
+        message_order: number;
         role: "user" | "assistant";
         parts: Json;
         source_citations: Json;
@@ -119,13 +121,16 @@ export type Database = {
           similarity: number;
         }>;
       };
-      update_recall_chat_session_summary: {
+      save_recall_chat_turn: {
         Args: {
           session_user_id: string;
           chat_session_id: string;
+          turn_id_value: string;
           latest_user_text_value: string;
           source_count_value: number;
-          message_increment: number;
+          user_parts_value: Json;
+          assistant_parts_value: Json;
+          source_citations_value: Json;
         };
         Returns: null;
       };
