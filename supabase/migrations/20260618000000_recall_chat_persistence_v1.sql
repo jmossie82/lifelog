@@ -67,3 +67,28 @@ create policy "Owner can update recall chat messages"
   to authenticated
   using (public.is_lifelog_owner(user_id))
   with check (public.is_lifelog_owner(user_id));
+
+create or replace function public.update_recall_chat_session_summary(
+  session_user_id uuid,
+  chat_session_id uuid,
+  latest_user_text_value text,
+  source_count_value integer,
+  message_increment integer
+)
+returns void
+language sql
+security invoker
+set search_path = ''
+as $$
+  update public.recall_chat_sessions
+  set
+    latest_user_text = latest_user_text_value,
+    source_count = source_count_value,
+    message_count = public.recall_chat_sessions.message_count + message_increment
+  where id = chat_session_id
+    and user_id = session_user_id
+    and public.is_lifelog_owner(session_user_id);
+$$;
+
+revoke all on function public.update_recall_chat_session_summary(uuid, uuid, text, integer, integer) from public;
+grant execute on function public.update_recall_chat_session_summary(uuid, uuid, text, integer, integer) to authenticated;

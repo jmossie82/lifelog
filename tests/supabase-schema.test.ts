@@ -216,3 +216,24 @@ test("recall chat persistence migration enables owner-only RLS writes", () => {
     );
   }
 });
+
+test("recall chat persistence migration defines owner-checked atomic summary update rpc", () => {
+  assert.match(
+    recallChatPersistenceMigration,
+    /create or replace function public\.update_recall_chat_session_summary/,
+  );
+  assert.match(recallChatPersistenceMigration, /security invoker/);
+  assert.match(recallChatPersistenceMigration, /set search_path = ''/);
+  assert.match(recallChatPersistenceMigration, /message_count = public\.recall_chat_sessions\.message_count \+ message_increment/);
+  assert.match(recallChatPersistenceMigration, /where id = chat_session_id/);
+  assert.match(recallChatPersistenceMigration, /and user_id = session_user_id/);
+  assert.match(recallChatPersistenceMigration, /and public\.is_lifelog_owner\(session_user_id\)/);
+  assert.match(
+    recallChatPersistenceMigration,
+    /revoke all on function public\.update_recall_chat_session_summary\(uuid, uuid, text, integer, integer\) from public;/,
+  );
+  assert.match(
+    recallChatPersistenceMigration,
+    /grant execute on function public\.update_recall_chat_session_summary\(uuid, uuid, text, integer, integer\) to authenticated;/,
+  );
+});
